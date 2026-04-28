@@ -48,25 +48,39 @@ class MarketService:
                     question = market_data.get("question", "")
                     category = categorize_market(question)
 
-                    tokens = market_data.get("tokens", [])
-                    yes_token = next((t for t in tokens if t.get("outcome") == "Yes"), None)
-                    no_token = next((t for t in tokens if t.get("outcome") == "No"), None)
+                    outcome_prices = market_data.get("outcomePrices")
+                    if outcome_prices and isinstance(outcome_prices, list) and len(outcome_prices) >= 2:
+                        yes_price = float(outcome_prices[0])
+                        no_price = float(outcome_prices[1])
+                    elif outcome_prices and isinstance(outcome_prices, str):
+                        import json as _json
+                        parsed = _json.loads(outcome_prices)
+                        yes_price = float(parsed[0]) if len(parsed) >= 1 else None
+                        no_price = float(parsed[1]) if len(parsed) >= 2 else None
+                    else:
+                        tokens = market_data.get("tokens", [])
+                        yes_token = next((t for t in tokens if t.get("outcome") == "Yes"), None)
+                        no_token = next((t for t in tokens if t.get("outcome") == "No"), None)
+                        yes_price = float(yes_token.get("price", 0.5)) if yes_token else None
+                        no_price = float(no_token.get("price", 0.5)) if no_token else None
+
+                    yes_token_id = market_data.get("clobTokenIds")
+                    if yes_token_id and isinstance(yes_token_id, str):
+                        import json as _json
+                        yes_token_id = _json.loads(yes_token_id)
 
                     existing = await db.execute(
                         select(MarketCache).where(MarketCache.condition_id == condition_id)
                     )
                     cached = existing.scalar_one_or_none()
 
-                    yes_price = float(yes_token.get("price", 0.5)) if yes_token else None
-                    no_price = float(no_token.get("price", 0.5)) if no_token else None
-
                     if cached:
                         cached.question = question
                         cached.category = category
                         cached.yes_price = yes_price
                         cached.no_price = no_price
-                        cached.yes_token_id = yes_token.get("token_id") if yes_token else None
-                        cached.no_token_id = no_token.get("token_id") if no_token else None
+                        cached.yes_token_id = yes_token_id[0] if isinstance(yes_token_id, list) and len(yes_token_id) >= 1 else None
+                        cached.no_token_id = yes_token_id[1] if isinstance(yes_token_id, list) and len(yes_token_id) >= 2 else None
                         cached.volume = market_data.get("volume")
                         cached.liquidity = market_data.get("liquidity")
                         cached.slug = market_data.get("slug")
@@ -96,8 +110,8 @@ class MarketService:
                             description=market_data.get("description"),
                             category=category,
                             slug=market_data.get("slug"),
-                            yes_token_id=yes_token.get("token_id") if yes_token else None,
-                            no_token_id=no_token.get("token_id") if no_token else None,
+                            yes_token_id=yes_token_id[0] if isinstance(yes_token_id, list) and len(yes_token_id) >= 1 else None,
+                            no_token_id=yes_token_id[1] if isinstance(yes_token_id, list) and len(yes_token_id) >= 2 else None,
                             yes_price=yes_price,
                             no_price=no_price,
                             volume=market_data.get("volume"),

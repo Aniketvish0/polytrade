@@ -1,5 +1,7 @@
+import logging
 import uuid
 from datetime import datetime, timezone
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import desc, select
@@ -7,9 +9,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.engine import get_db
 from app.db.models.approval import Approval
+from app.db.models.market_cache import MarketCache
 from app.db.models.user import User
 from app.dependencies import get_current_user
 from app.schemas.trade import ApprovalAction, ApprovalResponse
+from app.trading.engine import SimulatedTradingEngine
+from app.ws.events import portfolio_update_event, trade_executed_event
+from app.ws.manager import ws_manager
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -54,7 +62,34 @@ async def approve_trade(
     approval.resolution_note = body.note
     await db.flush()
 
-    # TODO: trigger trade execution via trading engine
+    market_result = await db.execute(
+        select(MarketCache).where(MarketCache.condition_id == approval.market_id)
+    )
+    market = market_result.scalar_one_or_none()
+    if market:
+        engine = SimulatedTradingEngine(db)
+        trade = await engine.execute_buy(
+            user_id=user.id,
+            market=market,
+            side=approval.side,
+            shares=approval.shares,
+            price=approval.price,
+            decision={
+                "confidence": float(approval.confidence_score or 0),
+                "reasoning": approval.reasoning,
+                "sources_count": len(approval.sources or []),
+            },
+            enforcement_result="approved",
+            policy_id=approval.policy_id,
+        )
+        await db.flush()
+
+        user_key = str(user.id)
+        await ws_manager.send_to_user(user_key, trade_executed_event(trade))
+
+        portfolio = await engine._get_portfolio(user.id)
+        await ws_manager.send_to_user(user_key, portfolio_update_event(portfolio))
+
     return approval
 
 

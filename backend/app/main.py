@@ -8,20 +8,33 @@ from app.config import settings
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    import asyncio
+    import logging
+
     from app.llm.registry import LLMRegistry
     from app.services.market_service import MarketService
+
+    logger = logging.getLogger(__name__)
 
     LLMRegistry.initialize()
 
     market_service = MarketService()
     app.state.market_service = market_service
-    app.state.market_poll_task = None
     app.state.agent_loops = {}
+
+    async def market_poll_loop():
+        while True:
+            try:
+                await market_service.fetch_and_cache_markets()
+            except Exception as e:
+                logger.error(f"Market poll error: {e}")
+            await asyncio.sleep(30)
+
+    app.state.market_poll_task = asyncio.create_task(market_poll_loop())
 
     yield
 
-    if app.state.market_poll_task:
-        app.state.market_poll_task.cancel()
+    app.state.market_poll_task.cancel()
     for loop in app.state.agent_loops.values():
         loop.stop()
 

@@ -1,15 +1,17 @@
 import logging
 import uuid
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.armoriq.enforcement import ArmorIQEnforcer
+from app.db.models.approval import Approval
 from app.db.models.market_cache import MarketCache
 from app.db.models.policy import Policy
 from app.trading.engine import SimulatedTradingEngine
-from app.ws.events import trade_denied_event, trade_executed_event, trade_held_event
+from app.ws.events import portfolio_update_event, trade_denied_event, trade_executed_event, trade_held_event
 from app.ws.manager import ConnectionManager
 
 logger = logging.getLogger(__name__)
@@ -91,15 +93,46 @@ class TradeExecutor:
             await self.ws_manager.send_to_user(
                 str(self.user_id), trade_executed_event(trade_data)
             )
+            portfolio = await self.trading_engine._get_portfolio(self.user_id)
+            await self.ws_manager.send_to_user(
+                str(self.user_id), portfolio_update_event(portfolio)
+            )
 
         elif enforcement["result"] == "hold":
             trade_data["enforcement_result"] = "held"
+
+            approval = Approval(
+                user_id=self.user_id,
+                market_id=market.condition_id,
+                market_question=market.question,
+                action="buy",
+                side=side,
+                shares=Decimal(str(shares)),
+                price=Decimal(str(price)),
+                total_amount=Decimal(str(total)),
+                category=category,
+                confidence_score=Decimal(str(decision.get("confidence", 0))),
+                reasoning=decision.get("reasoning"),
+                sources=[
+                    {"title": n.get("title"), "source": n.get("source")}
+                    for n in research.get("news_items", [])[:3]
+                ],
+                policy_id=policy.id if policy else None,
+                threshold_breached=enforcement.get("threshold_breached"),
+                armoriq_delegation_id=enforcement.get("delegation_id"),
+                expires_at=datetime.now(timezone.utc) + timedelta(minutes=30),
+            )
+            self.db.add(approval)
+            await self.db.flush()
+
             approval_data = {
+                "id": str(approval.id),
                 "trade": trade_data,
                 "reasoning": decision.get("reasoning"),
                 "confidence_score": decision.get("confidence"),
-                "sources": research.get("news_items", [])[:3],
+                "sources": approval.sources,
                 "threshold_breached": enforcement.get("threshold_breached"),
+                "expires_at": approval.expires_at.isoformat(),
             }
             await self.ws_manager.send_to_user(
                 str(self.user_id), trade_held_event(trade_data, approval_data)
