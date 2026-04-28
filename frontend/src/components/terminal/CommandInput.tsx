@@ -172,11 +172,11 @@ export function CommandInput() {
       const { name, args } = parseCommand(trimmed);
       const handled = handleLocalCommand(name, args);
       if (!handled) {
-        wsClient.send({ type: 'command', payload: { command: name, args } });
+        wsClient.send({ type: 'chat:message', data: { content: `${name} ${args}`.trim() } });
         setIsAgentTyping(true);
       }
     } else {
-      wsClient.send({ type: 'chat_message', payload: { content: trimmed } });
+      wsClient.send({ type: 'chat:message', data: { content: trimmed } });
       setIsAgentTyping(true);
     }
 

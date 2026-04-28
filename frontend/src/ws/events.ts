@@ -1,3 +1,4 @@
+// Legacy frontend event types
 export const WS_EVENTS = {
   CHAT_MESSAGE: 'chat_message',
   TRADE_UPDATE: 'trade_update',
@@ -14,12 +15,27 @@ export const WS_EVENTS = {
 
 export type WSEventType = (typeof WS_EVENTS)[keyof typeof WS_EVENTS];
 
+// Backend event types (domain:action format)
+export const BACKEND_EVENTS = {
+  AGENT_STATUS: 'agent:status',
+  AGENT_MESSAGE: 'agent:message',
+  TRADE_EXECUTED: 'trade:executed',
+  TRADE_HELD: 'trade:held',
+  TRADE_DENIED: 'trade:denied',
+  PORTFOLIO_UPDATE: 'portfolio:update',
+  NEWS_ITEM: 'news:item',
+  POLICY_UPDATED: 'policy:updated',
+  STRATEGY_UPDATED: 'strategy:updated',
+  PONG: 'pong',
+  APPROVAL_APPROVED: 'approval:approved',
+  APPROVAL_REJECTED: 'approval:rejected',
+  ERROR: 'error',
+} as const;
+
+// Client -> Server event types (what the frontend sends)
 export const CLIENT_EVENTS = {
-  SEND_MESSAGE: 'send_message',
-  APPROVE_TRADE: 'approve_trade',
-  DENY_TRADE: 'deny_trade',
-  PAUSE_AGENT: 'pause_agent',
-  RESUME_AGENT: 'resume_agent',
-  UPDATE_POLICY: 'update_policy',
-  UPDATE_STRATEGY: 'update_strategy',
+  CHAT_MESSAGE: 'chat:message',
+  TRADE_APPROVE: 'trade:approve',
+  TRADE_REJECT: 'trade:reject',
+  PING: 'ping',
 } as const;

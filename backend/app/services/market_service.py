@@ -1,3 +1,4 @@
+import json as _json
 import logging
 from datetime import datetime, timezone
 
@@ -41,33 +42,20 @@ class MarketService:
 
             async with async_session() as db:
                 for market_data in markets:
-                    condition_id = market_data.get("condition_id") or market_data.get("id", "")
+                    condition_id = (
+                        market_data.get("conditionId")
+                        or market_data.get("condition_id")
+                        or market_data.get("id", "")
+                    )
                     if not condition_id:
                         continue
 
                     question = market_data.get("question", "")
                     category = categorize_market(question)
 
-                    outcome_prices = market_data.get("outcomePrices")
-                    if outcome_prices and isinstance(outcome_prices, list) and len(outcome_prices) >= 2:
-                        yes_price = float(outcome_prices[0])
-                        no_price = float(outcome_prices[1])
-                    elif outcome_prices and isinstance(outcome_prices, str):
-                        import json as _json
-                        parsed = _json.loads(outcome_prices)
-                        yes_price = float(parsed[0]) if len(parsed) >= 1 else None
-                        no_price = float(parsed[1]) if len(parsed) >= 2 else None
-                    else:
-                        tokens = market_data.get("tokens", [])
-                        yes_token = next((t for t in tokens if t.get("outcome") == "Yes"), None)
-                        no_token = next((t for t in tokens if t.get("outcome") == "No"), None)
-                        yes_price = float(yes_token.get("price", 0.5)) if yes_token else None
-                        no_price = float(no_token.get("price", 0.5)) if no_token else None
-
-                    yes_token_id = market_data.get("clobTokenIds")
-                    if yes_token_id and isinstance(yes_token_id, str):
-                        import json as _json
-                        yes_token_id = _json.loads(yes_token_id)
+                    yes_price, no_price = self._parse_prices(market_data)
+                    token_ids = self._parse_token_ids(market_data)
+                    end_date = self._parse_end_date(market_data)
 
                     existing = await db.execute(
                         select(MarketCache).where(MarketCache.condition_id == condition_id)
@@ -79,39 +67,27 @@ class MarketService:
                         cached.category = category
                         cached.yes_price = yes_price
                         cached.no_price = no_price
-                        cached.yes_token_id = yes_token_id[0] if isinstance(yes_token_id, list) and len(yes_token_id) >= 1 else None
-                        cached.no_token_id = yes_token_id[1] if isinstance(yes_token_id, list) and len(yes_token_id) >= 2 else None
+                        cached.yes_token_id = token_ids[0]
+                        cached.no_token_id = token_ids[1]
                         cached.volume = market_data.get("volume")
                         cached.liquidity = market_data.get("liquidity")
                         cached.slug = market_data.get("slug")
                         cached.description = market_data.get("description")
-                        end_date_str = market_data.get("end_date_iso")
-                        if end_date_str:
-                            try:
-                                cached.end_date = datetime.fromisoformat(end_date_str.replace("Z", "+00:00"))
-                            except (ValueError, TypeError):
-                                pass
+                        if end_date:
+                            cached.end_date = end_date
                         cached.is_active = market_data.get("active", True)
                         cached.resolved = market_data.get("closed", False)
                         cached.raw_data = market_data
                         cached.last_fetched_at = datetime.now(timezone.utc)
                     else:
-                        end_date = None
-                        end_date_str = market_data.get("end_date_iso")
-                        if end_date_str:
-                            try:
-                                end_date = datetime.fromisoformat(end_date_str.replace("Z", "+00:00"))
-                            except (ValueError, TypeError):
-                                pass
-
                         new_market = MarketCache(
                             condition_id=condition_id,
                             question=question,
                             description=market_data.get("description"),
                             category=category,
                             slug=market_data.get("slug"),
-                            yes_token_id=yes_token_id[0] if isinstance(yes_token_id, list) and len(yes_token_id) >= 1 else None,
-                            no_token_id=yes_token_id[1] if isinstance(yes_token_id, list) and len(yes_token_id) >= 2 else None,
+                            yes_token_id=token_ids[0],
+                            no_token_id=token_ids[1],
                             yes_price=yes_price,
                             no_price=no_price,
                             volume=market_data.get("volume"),
@@ -127,4 +103,37 @@ class MarketService:
                 logger.info(f"Cached {len(markets)} markets from Polymarket")
 
         except Exception as e:
-            logger.error(f"Failed to fetch markets: {e}")
+            logger.error(f"Failed to fetch markets: {e}", exc_info=True)
+
+    @staticmethod
+    def _parse_prices(data: dict) -> tuple[float | None, float | None]:
+        raw = data.get("outcomePrices")
+        if not raw:
+            return None, None
+        if isinstance(raw, str):
+            raw = _json.loads(raw)
+        if isinstance(raw, list) and len(raw) >= 2:
+            return float(raw[0]), float(raw[1])
+        return None, None
+
+    @staticmethod
+    def _parse_token_ids(data: dict) -> tuple[str | None, str | None]:
+        raw = data.get("clobTokenIds")
+        if not raw:
+            return None, None
+        if isinstance(raw, str):
+            raw = _json.loads(raw)
+        if isinstance(raw, list) and len(raw) >= 2:
+            return raw[0], raw[1]
+        return None, None
+
+    @staticmethod
+    def _parse_end_date(data: dict) -> datetime | None:
+        for key in ("endDate", "end_date_iso"):
+            val = data.get(key)
+            if val:
+                try:
+                    return datetime.fromisoformat(val.replace("Z", "+00:00"))
+                except (ValueError, TypeError):
+                    continue
+        return None

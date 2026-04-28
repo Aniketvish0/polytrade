@@ -29,13 +29,13 @@ export function TradeProposalCard({ message }: TradeProposalCardProps) {
   const isHeld = trade.status === 'held';
 
   const handleApprove = () => {
-    wsClient.send({ type: 'approve_trade', payload: { tradeId: trade.id } });
+    wsClient.send({ type: 'trade:approve', data: { approval_id: trade.id } });
     updateTrade(trade.id, { status: 'approved' });
     removeApproval(trade.id);
   };
 
   const handleReject = () => {
-    wsClient.send({ type: 'deny_trade', payload: { tradeId: trade.id } });
+    wsClient.send({ type: 'trade:reject', data: { approval_id: trade.id } });
     updateTrade(trade.id, { status: 'denied' });
     removeApproval(trade.id);
   };

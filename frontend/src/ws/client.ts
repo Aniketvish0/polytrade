@@ -1,7 +1,8 @@
-import type { ServerEvent } from '@/types/ws';
-import { WS_URL } from '@/utils/constants';
+import type { ServerEvent, BackendEvent } from '@/types/ws';
+import { WS_BASE_URL } from '@/utils/constants';
 
-type EventHandler = (event: ServerEvent) => void;
+type AnyEvent = ServerEvent | BackendEvent;
+type EventHandler = (event: AnyEvent) => void;
 
 export class WebSocketClient {
   private ws: WebSocket | null = null;
@@ -10,22 +11,22 @@ export class WebSocketClient {
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 10;
   private baseDelay = 1000;
-  private url: string;
+  private token: string | null = null;
   private _isConnected = false;
-
-  constructor(url?: string) {
-    this.url = url ?? WS_URL;
-  }
 
   get isConnected(): boolean {
     return this._isConnected;
   }
 
-  connect(): void {
+  connect(token?: string): void {
+    if (token) this.token = token;
+    if (!this.token) return;
     if (this.ws?.readyState === WebSocket.OPEN) return;
 
+    const url = `${WS_BASE_URL}?token=${encodeURIComponent(this.token)}`;
+
     try {
-      this.ws = new WebSocket(this.url);
+      this.ws = new WebSocket(url);
 
       this.ws.onopen = () => {
         this._isConnected = true;
@@ -38,7 +39,7 @@ export class WebSocketClient {
 
       this.ws.onmessage = (event) => {
         try {
-          const data = JSON.parse(event.data) as ServerEvent;
+          const data = JSON.parse(event.data) as AnyEvent;
           this.dispatch(data);
         } catch {
           console.error('[WS] Failed to parse message:', event.data);
@@ -64,12 +65,17 @@ export class WebSocketClient {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
-    this.reconnectAttempts = this.maxReconnectAttempts;
+    this.reconnectAttempts = 0;
     if (this.ws) {
+      this.ws.onclose = null;
+      this.ws.onerror = null;
+      this.ws.onmessage = null;
+      this.ws.onopen = null;
       this.ws.close();
       this.ws = null;
     }
     this._isConnected = false;
+    this.token = null;
   }
 
   send(data: Record<string, unknown>): void {
@@ -87,7 +93,7 @@ export class WebSocketClient {
     };
   }
 
-  private dispatch(event: ServerEvent): void {
+  private dispatch(event: AnyEvent): void {
     this.handlers.forEach((handler) => {
       try {
         handler(event);

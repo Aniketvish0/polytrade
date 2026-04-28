@@ -2,14 +2,21 @@ import { useEffect, useRef } from 'react';
 import { wsClient } from '@/ws/client';
 import { dispatchServerEvent } from '@/ws/handlers';
 import { useAgentStore } from '@/stores/agentStore';
+import { useAuthStore } from '@/stores/authStore';
 
 export function useWebSocket() {
   const setConnectionState = useAgentStore((s) => s.setConnectionState);
-  const initialized = useRef(false);
+  const token = useAuthStore((s) => s.token);
+  const prevTokenRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (initialized.current) return;
-    initialized.current = true;
+    if (!token) return;
+
+    // Reconnect if token changed
+    if (prevTokenRef.current && prevTokenRef.current !== token) {
+      wsClient.disconnect();
+    }
+    prevTokenRef.current = token;
 
     setConnectionState('connecting');
 
@@ -17,7 +24,7 @@ export function useWebSocket() {
       dispatchServerEvent(event);
     });
 
-    wsClient.connect();
+    wsClient.connect(token);
 
     const heartbeatCheck = setInterval(() => {
       if (wsClient.isConnected) {
@@ -32,5 +39,5 @@ export function useWebSocket() {
       clearInterval(heartbeatCheck);
       wsClient.disconnect();
     };
-  }, [setConnectionState]);
+  }, [token, setConnectionState]);
 }

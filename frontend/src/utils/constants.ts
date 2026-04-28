@@ -1,5 +1,5 @@
 export const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
-export const WS_URL = import.meta.env.VITE_WS_URL ?? 'ws://localhost:8000/ws';
+export const WS_BASE_URL = import.meta.env.VITE_WS_URL ?? 'ws://localhost:3000/ws';
 
 export const APP_NAME = 'POLYTRADE';
 export const APP_VERSION = '0.1.0';

@@ -1,4 +1,4 @@
-import { API_URL } from '@/utils/constants';
+import { useAuthStore } from '@/stores/authStore';
 
 interface RequestOptions extends RequestInit {
   params?: Record<string, string>;
@@ -12,13 +12,20 @@ class ApiClient {
   }
 
   private buildUrl(path: string, params?: Record<string, string>): string {
-    const url = new URL(path, this.baseUrl);
+    const url = `${this.baseUrl}${path}`;
     if (params) {
-      Object.entries(params).forEach(([key, value]) => {
-        url.searchParams.set(key, value);
-      });
+      const search = new URLSearchParams(params).toString();
+      return `${url}?${search}`;
     }
-    return url.toString();
+    return url;
+  }
+
+  private getAuthHeaders(): Record<string, string> {
+    const token = useAuthStore.getState().token;
+    if (token) {
+      return { Authorization: `Bearer ${token}` };
+    }
+    return {};
   }
 
   private async request<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -27,6 +34,7 @@ class ApiClient {
 
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
+      ...this.getAuthHeaders(),
       ...options.headers,
     };
 
@@ -66,4 +74,5 @@ class ApiClient {
   }
 }
 
-export const apiClient = new ApiClient(API_URL);
+// Base URL is empty — Vite proxies /api to backend
+export const apiClient = new ApiClient('');

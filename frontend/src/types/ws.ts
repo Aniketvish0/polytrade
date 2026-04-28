@@ -4,6 +4,14 @@ import type { NewsItem } from './news';
 import type { AgentStatus } from './agent';
 import type { ChatMessage } from './chat';
 
+// Backend event structure: { type: "domain:action", data: {...}, timestamp: "..." }
+export interface BackendEvent {
+  type: string;
+  data: Record<string, unknown>;
+  timestamp?: string;
+}
+
+// Internal (frontend) event types — used by dispatchServerEvent
 export type ServerEvent =
   | { type: 'chat_message'; payload: ChatMessage }
   | { type: 'trade_update'; payload: Trade }

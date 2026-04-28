@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     POLYMARKET_GAMMA_URL: str = "https://gamma-api.polymarket.com"
     MARKET_POLL_INTERVAL: int = 30
 
-    CORS_ORIGINS: list[str] = ["http://localhost:5173"]
+    CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:5173"]
 
 
 settings = Settings()
