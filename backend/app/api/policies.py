@@ -64,6 +64,7 @@ async def update_policy(
     for field, value in updates.items():
         setattr(policy, field, value)
     await db.flush()
+    await db.refresh(policy)
     return policy
 
 

@@ -16,10 +16,11 @@ logger = logging.getLogger(__name__)
 
 class ArmorIQEnforcer:
     """
-    Evaluates trades against ArmorIQ policies.
+    Two-layer enforcement:
+    1. Local policy evaluation (threshold-based auto-approve/hold/deny)
+    2. ArmorIQ SDK (cryptographic audit trail, plan hashing, intent tokens)
 
-    Uses the armoriq-sdk Session API when available (ARMORIQ_API_KEY is set).
-    Falls back to local policy evaluation for development/demo without ArmorIQ backend.
+    Local rules decide the outcome. ArmorIQ SDK adds verifiable proof.
     """
 
     async def enforce(
@@ -42,28 +43,7 @@ class ArmorIQEnforcer:
         if not policy:
             return {"result": "auto_approve", "reason": "No active policy"}
 
-        try:
-            from app.config import settings
-
-            if settings.ARMORIQ_API_KEY:
-                return await self._enforce_with_sdk(
-                    user_email=user_email,
-                    policy=policy,
-                    category=category,
-                    amount=amount,
-                    market_id=market_id,
-                    action=action,
-                    side=side,
-                    shares=shares,
-                    price=price,
-                    reasoning=reasoning,
-                )
-        except ImportError:
-            logger.info("ArmorIQ SDK not available, using local enforcement")
-        except Exception as e:
-            logger.warning(f"ArmorIQ SDK enforcement failed, falling back to local: {e}")
-
-        return await self._enforce_local(
+        local_result = await self._enforce_local(
             user_id=user_id,
             policy=policy,
             category=category,
@@ -73,10 +53,34 @@ class ArmorIQEnforcer:
             db=db,
         )
 
-    async def _enforce_with_sdk(
+        try:
+            from app.config import settings
+
+            if settings.ARMORIQ_API_KEY:
+                sdk_proof = await self._get_sdk_proof(
+                    user_email=user_email,
+                    category=category,
+                    amount=amount,
+                    market_id=market_id,
+                    action=action,
+                    side=side,
+                    shares=shares,
+                    price=price,
+                    reasoning=reasoning,
+                )
+                local_result["plan_hash"] = sdk_proof.get("plan_hash")
+                local_result["intent_token_id"] = sdk_proof.get("intent_token_id")
+                local_result["armoriq_decision"] = sdk_proof.get("sdk_decision")
+        except ImportError:
+            logger.info("ArmorIQ SDK not available")
+        except Exception as e:
+            logger.warning(f"ArmorIQ SDK proof failed (non-blocking): {e}")
+
+        return local_result
+
+    async def _get_sdk_proof(
         self,
         user_email: str,
-        policy: Policy,
         category: str,
         amount: float,
         market_id: str,
@@ -87,6 +91,7 @@ class ArmorIQEnforcer:
         reasoning: str,
     ) -> dict:
         from armoriq_sdk import ArmorIQClient, SessionOptions
+        from armoriq_sdk.models import ToolCall
         from app.config import settings
 
         client = ArmorIQClient(
@@ -113,7 +118,6 @@ class ArmorIQEnforcer:
             "reasoning_summary": reasoning[:200],
         }
 
-        from armoriq_sdk.models import ToolCall
         token = session.start_plan(
             [ToolCall(name="polymarket-mcp__buy_shares", args=trade_params)],
             goal=f"Buy {shares} {side} shares on market {market_id} at ${price}",
@@ -125,24 +129,17 @@ class ArmorIQEnforcer:
             user_email=user_email,
         )
 
-        if decision.allowed:
-            return {
-                "result": "auto_approve",
-                "plan_hash": getattr(token, "plan_hash", None),
-                "intent_token_id": getattr(token, "token_id", None),
-            }
-        elif decision.action == "hold":
-            return {
-                "result": "hold",
-                "delegation_id": getattr(decision, "delegation_id", None),
-                "threshold_breached": "hold_above",
-                "plan_hash": getattr(token, "plan_hash", None),
-            }
-        else:
-            return {
-                "result": "deny",
-                "reason": getattr(decision, "reason", "Blocked by ArmorIQ policy"),
-            }
+        session.report(
+            "polymarket-mcp__buy_shares",
+            trade_params,
+            result={"status": "checked", "amount": amount},
+        )
+
+        return {
+            "plan_hash": getattr(token, "plan_hash", None),
+            "intent_token_id": getattr(token, "token_id", None),
+            "sdk_decision": decision.action if decision else None,
+        }
 
     async def _enforce_local(
         self,
@@ -157,7 +154,6 @@ class ArmorIQEnforcer:
         category_rules = policy.category_rules or {}
         global_rules = policy.global_rules or {}
         confidence_rules = policy.confidence_rules or {}
-        risk_rules = policy.risk_rules or {}
 
         cat_config = category_rules.get(category, category_rules.get("_default", {}))
 
@@ -167,7 +163,7 @@ class ArmorIQEnforcer:
                 "reason": f"Category '{category}' is disabled by policy",
             }
 
-        max_daily_spend = global_rules.get("max_daily_spend", 200)
+        max_daily_spend = global_rules.get("daily_spend_limit", global_rules.get("max_daily_spend", 200))
         today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
         daily_result = await db.execute(
             select(func.coalesce(func.sum(Trade.total_amount), 0)).where(
@@ -197,7 +193,7 @@ class ArmorIQEnforcer:
         if sources_count < min_sources:
             return {"result": "deny", "reason": f"Insufficient sources ({sources_count} < {min_sources})"}
 
-        min_confidence = confidence_rules.get("min_confidence_score", 0.65)
+        min_confidence = confidence_rules.get("min_confidence", confidence_rules.get("min_confidence_score", 0.65))
         if confidence < min_confidence:
             return {"result": "deny", "reason": f"Confidence too low ({confidence:.2f} < {min_confidence})"}
 

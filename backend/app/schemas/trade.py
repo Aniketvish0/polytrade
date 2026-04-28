@@ -38,7 +38,7 @@ class ApprovalResponse(BaseModel):
     category: str | None
     confidence_score: Decimal | None
     reasoning: str | None
-    sources: dict | None
+    sources: list | dict | None
     threshold_breached: str | None
     status: str
     expires_at: datetime
