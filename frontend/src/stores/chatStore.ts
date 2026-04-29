@@ -22,7 +22,7 @@ export const useChatStore = create<ChatStore>((set) => ({
       id: 'welcome-1',
       role: 'system',
       type: 'text',
-      content: 'POLYTRADE Terminal v0.1.0 initialized. Type /help for available commands.',
+      content: 'POLYTRADE Terminal initialized. Ask me anything or type !/help for local commands.',
       timestamp: Date.now(),
     },
   ],

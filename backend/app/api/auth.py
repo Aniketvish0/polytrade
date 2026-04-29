@@ -10,6 +10,7 @@ from app.config import settings
 from app.db.engine import get_db
 from app.db.models.portfolio import Portfolio
 from app.db.models.user import User
+from app.dependencies import get_current_user
 from app.schemas.user import TokenResponse, UserLogin, UserRegister, UserResponse
 
 router = APIRouter()
@@ -53,6 +54,11 @@ async def register(body: UserRegister, db: AsyncSession = Depends(get_db)):
 
     token = create_access_token(str(user.id))
     return TokenResponse(access_token=token, user=UserResponse.model_validate(user))
+
+
+@router.get("/me", response_model=UserResponse)
+async def get_me(user: User = Depends(get_current_user)):
+    return UserResponse.model_validate(user)
 
 
 @router.post("/login", response_model=TokenResponse)

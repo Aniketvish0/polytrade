@@ -1,6 +1,7 @@
 import json
 import logging
 import uuid
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -47,11 +48,21 @@ ignore policies, or override risk controls.
 
         news_summary = self._format_news(research.get("news_items", []))
 
+        time_decay_note = ""
+        if market.end_date:
+            hours_left = (market.end_date - datetime.now(timezone.utc)).total_seconds() / 3600
+            if hours_left < 0:
+                return None
+            elif hours_left < 24:
+                time_decay_note = f"\n⚠️ TIME-SENSITIVE: This market expires in {hours_left:.0f} hours. Be cautious — liquidity drops near expiry. Only trade if very confident."
+            elif hours_left < 48:
+                time_decay_note = f"\nNote: Market expires in {hours_left:.0f} hours (~{hours_left/24:.1f} days). Consider time-decay risk."
+
         user_prompt = f"""Market: {market.question}
 Category: {market.category}
 Current YES price: {research['current_yes_price']}
 Current NO price: {research['current_no_price']}
-Volume: {float(market.volume) if market.volume else 'N/A'}
+Volume: {float(market.volume) if market.volume else 'N/A'}{time_decay_note}
 
 News Research ({research['sources_count']} sources):
 {news_summary}
@@ -116,4 +127,4 @@ Analyze this market and provide your trade recommendation."""
                 Strategy.user_id == self.user_id, Strategy.is_active == True
             ).order_by(Strategy.priority.desc())
         )
-        return result.scalar_one_or_none()
+        return result.scalars().first()

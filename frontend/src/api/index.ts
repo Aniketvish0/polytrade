@@ -1,8 +1,14 @@
 import { apiClient } from './client';
+import type { AuthUser } from '@/stores/authStore';
 import type { PortfolioSummary, Position } from '@/types/portfolio';
 import type { Trade, ApprovalRequest } from '@/types/trade';
 import type { NewsItem } from '@/types/news';
 import type { Policy, Strategy } from '@/types/ws';
+
+// Auth
+export const authApi = {
+  me: () => apiClient.get<AuthUser>('/api/auth/me'),
+};
 
 // News
 export const newsApi = {

@@ -28,15 +28,22 @@ export type ServerEvent =
 export interface Policy {
   id: string;
   name: string;
-  description: string;
-  enabled: boolean;
-  parameters: Record<string, unknown>;
+  is_active: boolean;
+  global_rules: Record<string, unknown>;
+  category_rules: Record<string, unknown>;
+  confidence_rules: Record<string, unknown>;
+  risk_rules: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Strategy {
   id: string;
   name: string;
-  description: string;
-  enabled: boolean;
-  parameters: Record<string, unknown>;
+  is_active: boolean;
+  priority: number;
+  rules: Record<string, unknown>;
+  context: string;
+  created_at: string;
+  updated_at: string;
 }

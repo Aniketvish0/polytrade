@@ -6,6 +6,10 @@ export type MessageType =
   | 'approval_request'
   | 'news_summary'
   | 'policy_confirm'
+  | 'strategy_preview'
+  | 'policy_preview'
+  | 'market_analysis'
+  | 'onboarding_step'
   | 'error';
 
 export interface ChatMessage {

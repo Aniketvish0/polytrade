@@ -1,8 +1,12 @@
 export type AgentStatus =
   | 'idle'
+  | 'scanning'
+  | 'researching'
   | 'analyzing'
   | 'trading'
+  | 'running'
   | 'paused'
+  | 'offline'
   | 'error'
   | 'disconnected';
 

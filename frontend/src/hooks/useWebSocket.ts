@@ -21,6 +21,9 @@ export function useWebSocket() {
     setConnectionState('connecting');
 
     const unsubscribe = wsClient.on((event) => {
+      if ('payload' in event && (event as Record<string, unknown>).type === 'agent_status') {
+        setConnectionState('connected');
+      }
       dispatchServerEvent(event);
     });
 

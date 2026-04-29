@@ -28,7 +28,8 @@ export function TradeFeed() {
         ) : (
           <div className="divide-y divide-border/50">
             {trades.map((trade) => {
-              const isBuy = trade.side === 'buy';
+              const isBuy = trade.action === 'buy' || trade.side === 'YES';
+              const statusForBadge = trade.enforcement_result === 'auto_approved' ? 'executed' : trade.enforcement_result;
               return (
                 <div
                   key={trade.id}
@@ -49,37 +50,37 @@ export function TradeFeed() {
                           isBuy ? 'text-approved' : 'text-denied'
                         }`}
                       >
-                        {trade.side.toUpperCase()}
+                        {trade.action?.toUpperCase() ?? 'BUY'}
                       </span>
                       <span className="text-xs text-primary truncate">
-                        {trade.market}
+                        {trade.market_question}
                       </span>
                     </div>
                     <div className="flex items-center gap-2 mt-px">
                       <MonoValue
-                        value={`${trade.shares} @ ${formatOdds(trade.price)}`}
+                        value={`${trade.shares} ${trade.side} @ ${formatOdds(trade.price)}`}
                         size="xs"
                         className="text-muted"
                       />
-                      {trade.reason && (
+                      {trade.reasoning && (
                         <span className="text-xxs text-held truncate max-w-[150px]">
-                          {trade.reason}
+                          {trade.reasoning}
                         </span>
                       )}
                     </div>
                   </div>
 
                   <div className="flex flex-col items-end shrink-0 gap-0.5">
-                    <Badge status={trade.status} />
+                    <Badge status={statusForBadge as never} />
                     <MonoValue
-                      value={formatUSD(trade.total)}
+                      value={formatUSD(trade.total_amount)}
                       size="xs"
                       className="text-secondary"
                     />
                   </div>
 
                   <div className="text-xxs text-muted font-mono shrink-0 w-12 text-right">
-                    {formatRelativeTime(trade.timestamp)}
+                    {trade.executed_at ? formatRelativeTime(new Date(trade.executed_at).getTime()) : ''}
                   </div>
                 </div>
               );

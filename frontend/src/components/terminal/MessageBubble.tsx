@@ -31,12 +31,58 @@ export function MessageBubble({ message }: MessageBubbleProps) {
       case 'error':
         return <ErrorCard message={message} />;
       case 'policy_confirm':
+      case 'policy_preview':
         return (
           <div className="px-2 py-1 bg-surface border border-border">
             <span className="text-xs text-held font-mono">POLICY</span>
-            <span className="text-xs text-secondary ml-2">{message.content}</span>
+            <span className="text-xs text-secondary ml-2 whitespace-pre-wrap">{message.content}</span>
           </div>
         );
+      case 'strategy_preview':
+        return (
+          <div className="px-2 py-1 bg-surface border border-border">
+            <span className="text-xs text-accent font-mono">STRATEGY</span>
+            <span className="text-xs text-secondary ml-2 whitespace-pre-wrap">{message.content}</span>
+          </div>
+        );
+      case 'market_analysis':
+        return (
+          <div className="px-2 py-1 bg-surface border border-border">
+            <span className="text-xs text-approved font-mono">ANALYSIS</span>
+            <span className="text-xs text-secondary ml-2 whitespace-pre-wrap">{message.content}</span>
+          </div>
+        );
+      case 'onboarding_step': {
+        const options = (message.data?.options as string[]) ?? [];
+        return (
+          <div className="space-y-1.5">
+            <span className="text-xs text-primary whitespace-pre-wrap">
+              {message.content}
+            </span>
+            {options.length > 0 && (
+              <div className="flex flex-wrap gap-1 pt-1">
+                {options.map((opt) => (
+                  <span
+                    key={opt}
+                    className="px-2 py-0.5 text-xxs font-mono bg-surface border border-border text-secondary rounded cursor-pointer hover:border-accent hover:text-accent transition-colors"
+                    onClick={() => {
+                      const input = document.querySelector<HTMLInputElement>('input[type="text"]');
+                      if (input) {
+                        const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+                        nativeInputValueSetter?.call(input, opt);
+                        input.dispatchEvent(new Event('input', { bubbles: true }));
+                        input.focus();
+                      }
+                    }}
+                  >
+                    {opt}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      }
       case 'text':
       default:
         return (

@@ -7,7 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.agent.state import AgentState, AgentStateManager
 from app.config import settings
-from app.ws.events import agent_status_event, trade_denied_event, trade_executed_event, trade_held_event
+from app.llm.registry import LLMRegistry
+from app.ws.events import agent_status_event, portfolio_update_event, trade_denied_event, trade_executed_event, trade_held_event
 from app.ws.manager import ConnectionManager
 
 logger = logging.getLogger(__name__)
@@ -100,16 +101,27 @@ class AgentLoop:
                 ws_manager=self.ws_manager,
             )
 
-            for market in markets[:5]:
+            batch = markets[:5]
+
+            self.state_manager.state = AgentState.RESEARCHING
+            self.current_task = f"Researching {len(batch)} markets in parallel"
+            await self._broadcast_status()
+
+            RESEARCH_TIMEOUT = 30
+            research_tasks = [
+                asyncio.wait_for(researcher.research(m), timeout=RESEARCH_TIMEOUT)
+                for m in batch
+            ]
+            research_results = await asyncio.gather(*research_tasks, return_exceptions=True)
+
+            for market, research in zip(batch, research_results):
                 await self.state_manager.wait_if_paused()
                 if self.state_manager.is_stopped():
                     break
 
-                self.state_manager.state = AgentState.RESEARCHING
-                self.current_task = f"Researching: {market.question[:60]}"
-                await self._broadcast_status()
-
-                research = await researcher.research(market)
+                if isinstance(research, Exception):
+                    logger.warning(f"Research failed for {market.condition_id}: {research}")
+                    continue
 
                 self.state_manager.state = AgentState.ANALYZING
                 self.current_task = f"Analyzing: {market.question[:60]}"
@@ -118,6 +130,16 @@ class AgentLoop:
                 decision = await analyzer.analyze(market, research)
 
                 if decision and decision.get("action") != "pass":
+                    if len(LLMRegistry.available()) >= 2:
+                        from app.agent.consensus import ConsensusAnalyzer
+                        consensus = ConsensusAnalyzer()
+                        decision = await consensus.check_consensus(
+                            market, research, decision
+                        )
+                        if not decision:
+                            logger.info(f"No consensus for {market.condition_id}, skipping")
+                            continue
+
                     self.state_manager.state = AgentState.TRADING
                     self.current_task = f"Trading: {market.question[:60]}"
                     await self._broadcast_status()
@@ -126,9 +148,39 @@ class AgentLoop:
 
             await db.commit()
 
+        await self._evaluate_positions()
+
         self.state_manager.state = AgentState.RUNNING
         self.current_task = None
         await self._broadcast_status()
+
+    async def _evaluate_positions(self):
+        from app.agent.position_manager import PositionManager
+
+        try:
+            async with self.db_session_factory() as db:
+                manager = PositionManager(db=db, user_id=self.user_id)
+                exits = await manager.evaluate_positions()
+
+                for exit_info in exits:
+                    trade = exit_info["trade"]
+                    await self.ws_manager.send_to_user(
+                        str(self.user_id),
+                        trade_executed_event(trade),
+                    )
+
+                await db.commit()
+
+                if exits:
+                    from app.trading.engine import SimulatedTradingEngine
+                    engine = SimulatedTradingEngine(db)
+                    portfolio = await engine._get_portfolio(self.user_id)
+                    await self.ws_manager.send_to_user(
+                        str(self.user_id),
+                        portfolio_update_event(portfolio),
+                    )
+        except Exception as e:
+            logger.warning(f"Position evaluation error: {e}")
 
     async def _broadcast_status(self):
         event = agent_status_event(

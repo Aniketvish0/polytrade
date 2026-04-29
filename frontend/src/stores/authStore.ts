@@ -7,6 +7,7 @@ export interface AuthUser {
   role: string;
   initial_balance: string;
   is_active: boolean;
+  onboarding_completed: boolean;
   created_at: string;
 }
 
@@ -26,6 +27,7 @@ interface AuthStore {
   register: (email: string, password: string) => Promise<void>;
   logout: () => void;
   clearError: () => void;
+  setUser: (user: AuthUser) => void;
 }
 
 const STORAGE_KEY = 'polytrade_auth_token';
@@ -42,7 +44,12 @@ function loadToken(): string | null {
 function loadUser(): AuthUser | null {
   try {
     const raw = localStorage.getItem(USER_STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as AuthUser) : null;
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as AuthUser;
+    if (parsed.onboarding_completed === undefined) {
+      parsed.onboarding_completed = true;
+    }
+    return parsed;
   } catch {
     return null;
   }
@@ -105,4 +112,9 @@ export const useAuthStore = create<AuthStore>((set) => ({
   },
 
   clearError: () => set({ error: null }),
+
+  setUser: (user: AuthUser) => {
+    localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user));
+    set({ user });
+  },
 }));

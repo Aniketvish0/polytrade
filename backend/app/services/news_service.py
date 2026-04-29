@@ -1,4 +1,6 @@
 import logging
+import time
+from collections import OrderedDict
 from datetime import datetime, timezone
 
 import httpx
@@ -9,12 +11,37 @@ from app.db.models.news_item import NewsItem
 
 logger = logging.getLogger(__name__)
 
+_NEWS_CACHE: OrderedDict[str, tuple[float, list[dict]]] = OrderedDict()
+_CACHE_TTL = 300  # 5 minutes
+_CACHE_MAX = 100
+
+
+def _cache_get(key: str) -> list[dict] | None:
+    if key in _NEWS_CACHE:
+        ts, items = _NEWS_CACHE[key]
+        if time.monotonic() - ts < _CACHE_TTL:
+            _NEWS_CACHE.move_to_end(key)
+            return items
+        del _NEWS_CACHE[key]
+    return None
+
+
+def _cache_set(key: str, items: list[dict]):
+    _NEWS_CACHE[key] = (time.monotonic(), items)
+    while len(_NEWS_CACHE) > _CACHE_MAX:
+        _NEWS_CACHE.popitem(last=False)
+
 
 class NewsService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
     async def search(self, query: str, category: str, market_id: str) -> list[dict]:
+        cache_key = f"{market_id}:{category}"
+        cached = _cache_get(cache_key)
+        if cached is not None:
+            logger.debug(f"News cache hit for {cache_key}")
+            return cached
         import asyncio
 
         results = await asyncio.gather(
@@ -54,6 +81,7 @@ class NewsService:
             )
             self.db.add(news)
 
+        _cache_set(cache_key, scored)
         return scored
 
     async def _search_tavily(self, query: str) -> list[dict]:

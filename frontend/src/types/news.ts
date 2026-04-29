@@ -1,11 +1,12 @@
 export interface NewsItem {
   id: string;
-  headline: string;
-  summary: string;
   source: string;
-  url?: string;
-  relevance: number;
-  relatedMarkets: string[];
-  sentiment: 'positive' | 'negative' | 'neutral';
-  timestamp: number;
+  title: string;
+  url: string | null;
+  summary: string | null;
+  relevance_score: number | null;
+  credibility_score: number | null;
+  sentiment_score: number | null;
+  categories: string[] | null;
+  fetched_at: string | null;
 }

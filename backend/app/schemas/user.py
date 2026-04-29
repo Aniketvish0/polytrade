@@ -24,6 +24,7 @@ class UserResponse(BaseModel):
     role: str
     initial_balance: Decimal
     is_active: bool
+    onboarding_completed: bool = False
     created_at: datetime
 
     model_config = {"from_attributes": True}

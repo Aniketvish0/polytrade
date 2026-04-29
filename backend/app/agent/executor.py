@@ -148,5 +148,6 @@ class TradeExecutor:
     async def _get_active_policy(self) -> Policy | None:
         result = await self.db.execute(
             select(Policy).where(Policy.user_id == self.user_id, Policy.is_active == True)
+            .order_by(Policy.created_at.desc())
         )
-        return result.scalar_one_or_none()
+        return result.scalars().first()

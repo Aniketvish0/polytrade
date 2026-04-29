@@ -1,93 +1,24 @@
 import { create } from 'zustand';
 import type { Position, PortfolioSummary } from '@/types/portfolio';
+import { apiClient } from '@/api/client';
 
 interface PortfolioStore {
-  summary: PortfolioSummary;
+  summary: PortfolioSummary | null;
   positions: Position[];
+  isLoading: boolean;
 
   setSummary: (summary: PortfolioSummary) => void;
   setPositions: (positions: Position[]) => void;
   updatePosition: (position: Position) => void;
   removePosition: (id: string) => void;
+  fetchPortfolio: () => Promise<void>;
+  fetchPositions: () => Promise<void>;
 }
 
-const defaultSummary: PortfolioSummary = {
-  totalValue: 25420.5,
-  totalPnl: 1842.3,
-  totalPnlPercent: 7.82,
-  cashBalance: 8250.0,
-  positionCount: 5,
-  dayPnl: 342.15,
-  dayPnlPercent: 1.36,
-  maxDrawdown: -3.2,
-};
-
-const mockPositions: Position[] = [
-  {
-    id: 'pos-1',
-    market: 'Presidential Election 2024',
-    outcome: 'Yes',
-    shares: 500,
-    avgPrice: 0.62,
-    currentPrice: 0.68,
-    value: 340.0,
-    pnl: 30.0,
-    pnlPercent: 9.68,
-    timestamp: Date.now(),
-  },
-  {
-    id: 'pos-2',
-    market: 'Fed Rate Cut March',
-    outcome: 'No',
-    shares: 300,
-    avgPrice: 0.45,
-    currentPrice: 0.52,
-    value: 156.0,
-    pnl: 21.0,
-    pnlPercent: 15.56,
-    timestamp: Date.now(),
-  },
-  {
-    id: 'pos-3',
-    market: 'BTC > 100k by EOY',
-    outcome: 'Yes',
-    shares: 200,
-    avgPrice: 0.35,
-    currentPrice: 0.31,
-    value: 62.0,
-    pnl: -8.0,
-    pnlPercent: -11.43,
-    timestamp: Date.now(),
-  },
-  {
-    id: 'pos-4',
-    market: 'Supreme Court Ruling',
-    outcome: 'Yes',
-    shares: 750,
-    avgPrice: 0.71,
-    currentPrice: 0.74,
-    value: 555.0,
-    pnl: 22.5,
-    pnlPercent: 4.23,
-    timestamp: Date.now(),
-  },
-  {
-    id: 'pos-5',
-    market: 'Next Twitter CEO',
-    outcome: 'Internal',
-    shares: 400,
-    avgPrice: 0.28,
-    currentPrice: 0.33,
-    value: 132.0,
-    pnl: 20.0,
-    pnlPercent: 17.86,
-    timestamp: Date.now(),
-  },
-];
-
 export const usePortfolioStore = create<PortfolioStore>((set) => ({
-  summary: defaultSummary,
-  positions: mockPositions,
+  summary: null,
+  positions: [],
+  isLoading: false,
 
   setSummary: (summary) => set({ summary }),
 
@@ -104,4 +35,53 @@ export const usePortfolioStore = create<PortfolioStore>((set) => ({
     set((state) => ({
       positions: state.positions.filter((p) => p.id !== id),
     })),
+
+  fetchPortfolio: async () => {
+    try {
+      set({ isLoading: true });
+      const raw = await apiClient.get<Record<string, unknown>>('/api/portfolio');
+      const summary: PortfolioSummary = {
+        id: raw.id as string,
+        balance: Number(raw.balance),
+        total_deposited: Number(raw.total_deposited),
+        total_pnl: Number(raw.total_pnl),
+        total_trades: Number(raw.total_trades),
+        winning_trades: Number(raw.winning_trades),
+        losing_trades: Number(raw.losing_trades),
+        win_rate: Number(raw.win_rate),
+        open_positions: Number(raw.open_positions),
+        today_pnl: Number(raw.today_pnl),
+        today_trades: Number(raw.today_trades),
+        daily_spend_used: Number(raw.daily_spend_used),
+        daily_spend_limit: Number(raw.daily_spend_limit),
+      };
+      set({ summary, isLoading: false });
+    } catch {
+      set({ isLoading: false });
+    }
+  },
+
+  fetchPositions: async () => {
+    try {
+      const raw = await apiClient.get<Record<string, unknown>[]>('/api/portfolio/positions');
+      const positions: Position[] = raw.map((p) => ({
+        id: p.id as string,
+        market_id: p.market_id as string,
+        market_question: p.market_question as string,
+        market_category: (p.market_category as string) ?? null,
+        side: p.side as string,
+        shares: Number(p.shares),
+        avg_price: Number(p.avg_price),
+        current_price: p.current_price != null ? Number(p.current_price) : null,
+        current_value: p.current_value != null ? Number(p.current_value) : null,
+        unrealized_pnl: p.unrealized_pnl != null ? Number(p.unrealized_pnl) : null,
+        cost_basis: Number(p.cost_basis),
+        status: p.status as string,
+        opened_at: p.opened_at as string,
+      }));
+      set({ positions });
+    } catch {
+      // no positions yet
+    }
+  },
 }));

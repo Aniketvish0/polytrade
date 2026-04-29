@@ -5,9 +5,20 @@ import { useAgentStore } from '@/stores/agentStore';
 import { usePolicyStore } from '@/stores/policyStore';
 import { useStrategyStore } from '@/stores/strategyStore';
 import { usePortfolioStore } from '@/stores/portfolioStore';
-import { matchCommands, parseCommand, SLASH_COMMANDS } from '@/utils/commands';
-import { formatUSD, formatPercent } from '@/utils/format';
+import { formatUSD } from '@/utils/format';
 import { wsClient } from '@/ws/client';
+
+const LOCAL_COMMANDS: Record<string, string> = {
+  '!/help': 'Show local commands',
+  '!/clear': 'Clear the terminal',
+  '!/status': 'Show agent status',
+  '!/start': 'Start the trading agent',
+  '!/pause': 'Pause the trading agent',
+  '!/resume': 'Resume the trading agent',
+  '!/policy': 'Show policies',
+  '!/strategy': 'Show strategies',
+  '!/portfolio': 'Show portfolio summary',
+};
 
 export function CommandInput() {
   const inputValue = useChatStore((s) => s.inputValue);
@@ -20,7 +31,7 @@ export function CommandInput() {
   const setIsAgentTyping = useChatStore((s) => s.setIsAgentTyping);
   const clearMessages = useChatStore((s) => s.clearMessages);
 
-  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [suggestions, setSuggestions] = useState<{ name: string; desc: string }[]>([]);
   const [selectedSuggestion, setSelectedSuggestion] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -29,9 +40,12 @@ export function CommandInput() {
   }, []);
 
   const updateSuggestions = useCallback((value: string) => {
-    if (value.startsWith('/') && value.length > 1) {
-      const matches = matchCommands(value);
-      setSuggestions(matches.map((m) => m.name));
+    if (value.startsWith('!/') && value.length > 2) {
+      const lower = value.toLowerCase();
+      const matches = Object.entries(LOCAL_COMMANDS)
+        .filter(([name]) => name.startsWith(lower))
+        .map(([name, desc]) => ({ name, desc }));
+      setSuggestions(matches);
       setSelectedSuggestion(0);
     } else {
       setSuggestions([]);
@@ -39,30 +53,31 @@ export function CommandInput() {
   }, []);
 
   const handleLocalCommand = useCallback(
-    (name: string, args: string) => {
-      const agentStatus = useAgentStore.getState().status;
-      const policies = usePolicyStore.getState().policies;
-      const strategies = useStrategyStore.getState().strategies;
-      const summary = usePortfolioStore.getState().summary;
+    (input: string): boolean => {
+      const trimmed = input.trim().toLowerCase();
+      const spaceIdx = trimmed.indexOf(' ');
+      const cmd = spaceIdx === -1 ? trimmed : trimmed.slice(0, spaceIdx);
 
-      switch (name) {
-        case '/help': {
-          const helpText = SLASH_COMMANDS.map(
-            (cmd) => `  ${cmd.name.padEnd(14)} ${cmd.description}`
-          ).join('\n');
+      switch (cmd) {
+        case '!/help': {
+          const helpText = Object.entries(LOCAL_COMMANDS)
+            .map(([name, desc]) => `  ${name.padEnd(16)} ${desc}`)
+            .join('\n');
           addMessage({
             id: `sys-${Date.now()}`,
             role: 'system',
             type: 'text',
-            content: `Available commands:\n${helpText}`,
+            content: `Local commands (instant, no AI):\n${helpText}\n\nEverything else goes to the AI agent — just type naturally.`,
             timestamp: Date.now(),
           });
           return true;
         }
-        case '/clear':
+        case '!/clear':
           clearMessages();
           return true;
-        case '/status': {
+        case '!/status': {
+          const agentStatus = useAgentStore.getState().status;
+          useAgentStore.getState().fetchStatus();
           addMessage({
             id: `sys-${Date.now()}`,
             role: 'system',
@@ -72,86 +87,114 @@ export function CommandInput() {
           });
           return true;
         }
-        case '/policy': {
-          if (args === '' || args === 'list') {
-            const list = policies
-              .map(
-                (p) =>
-                  `  ${p.enabled ? '[ON] ' : '[OFF]'} ${p.name.padEnd(24)} ${p.description}`
-              )
-              .join('\n');
-            addMessage({
-              id: `sys-${Date.now()}`,
-              role: 'system',
-              type: 'policy_confirm',
-              content: `Active Policies:\n${list}`,
-              timestamp: Date.now(),
-            });
-            return true;
-          }
-          return false;
+        case '!/start':
+          useAgentStore.getState().startAgent();
+          addMessage({
+            id: `sys-${Date.now()}`,
+            role: 'system',
+            type: 'text',
+            content: 'Starting agent...',
+            timestamp: Date.now(),
+          });
+          return true;
+        case '!/pause':
+          useAgentStore.getState().pauseAgent();
+          addMessage({
+            id: `sys-${Date.now()}`,
+            role: 'system',
+            type: 'text',
+            content: 'Pausing agent...',
+            timestamp: Date.now(),
+          });
+          return true;
+        case '!/resume':
+          useAgentStore.getState().resumeAgent();
+          addMessage({
+            id: `sys-${Date.now()}`,
+            role: 'system',
+            type: 'text',
+            content: 'Resuming agent...',
+            timestamp: Date.now(),
+          });
+          return true;
+        case '!/policy': {
+          usePolicyStore.getState().fetchPolicies();
+          const policies = usePolicyStore.getState().policies;
+          const list = policies.length > 0
+            ? policies.map((p) => `  ${p.is_active ? '[ON] ' : '[OFF]'} ${p.name}`).join('\n')
+            : '  No policies configured';
+          addMessage({
+            id: `sys-${Date.now()}`,
+            role: 'system',
+            type: 'policy_confirm',
+            content: `Policies:\n${list}`,
+            timestamp: Date.now(),
+          });
+          return true;
         }
-        case '/strategy': {
-          if (args === '' || args === 'list') {
-            const list = strategies
-              .map(
-                (s) =>
-                  `  ${s.enabled ? '[ON] ' : '[OFF]'} ${s.name.padEnd(24)} ${s.description}`
-              )
-              .join('\n');
+        case '!/strategy': {
+          useStrategyStore.getState().fetchStrategies();
+          const strategies = useStrategyStore.getState().strategies;
+          const list = strategies.length > 0
+            ? strategies.map((s) => `  ${s.is_active ? '[ON] ' : '[OFF]'} ${s.name} (priority: ${s.priority})`).join('\n')
+            : '  No strategies configured';
+          addMessage({
+            id: `sys-${Date.now()}`,
+            role: 'system',
+            type: 'text',
+            content: `Strategies:\n${list}`,
+            timestamp: Date.now(),
+          });
+          return true;
+        }
+        case '!/portfolio': {
+          usePortfolioStore.getState().fetchPortfolio();
+          const summary = usePortfolioStore.getState().summary;
+          if (summary) {
             addMessage({
               id: `sys-${Date.now()}`,
               role: 'system',
               type: 'text',
-              content: `Active Strategies:\n${list}`,
+              content: [
+                `Portfolio Summary:`,
+                `  Balance:       ${formatUSD(summary.balance)}`,
+                `  Total P&L:     ${formatUSD(summary.total_pnl)}`,
+                `  Win Rate:      ${(summary.win_rate * 100).toFixed(1)}%`,
+                `  Open Positions:${summary.open_positions}`,
+                `  Today Trades:  ${summary.today_trades}`,
+                `  Daily Spend:   ${formatUSD(summary.daily_spend_used)} / ${formatUSD(summary.daily_spend_limit)}`,
+              ].join('\n'),
               timestamp: Date.now(),
             });
-            return true;
+          } else {
+            addMessage({
+              id: `sys-${Date.now()}`,
+              role: 'system',
+              type: 'text',
+              content: 'Portfolio data loading...',
+              timestamp: Date.now(),
+            });
           }
-          return false;
-        }
-        case '/portfolio': {
-          addMessage({
-            id: `sys-${Date.now()}`,
-            role: 'system',
-            type: 'text',
-            content: [
-              `Portfolio Summary:`,
-              `  Total Value:  ${formatUSD(summary.totalValue)}`,
-              `  Total P&L:    ${formatUSD(summary.totalPnl)} (${formatPercent(summary.totalPnlPercent)})`,
-              `  Day P&L:      ${formatUSD(summary.dayPnl)} (${formatPercent(summary.dayPnlPercent)})`,
-              `  Cash Balance: ${formatUSD(summary.cashBalance)}`,
-              `  Positions:    ${summary.positionCount}`,
-            ].join('\n'),
-            timestamp: Date.now(),
-          });
           return true;
         }
-        case '/pause':
-          wsClient.send({ type: 'pause_agent' });
-          addMessage({
-            id: `sys-${Date.now()}`,
-            role: 'system',
-            type: 'text',
-            content: 'Pause command sent to agent.',
-            timestamp: Date.now(),
-          });
-          return true;
-        case '/resume':
-          wsClient.send({ type: 'resume_agent' });
-          addMessage({
-            id: `sys-${Date.now()}`,
-            role: 'system',
-            type: 'text',
-            content: 'Resume command sent to agent.',
-            timestamp: Date.now(),
-          });
-          return true;
         default:
           return false;
       }
     },
     [addMessage, clearMessages]
+  );
+
+  const sendToAgent = useCallback(
+    (content: string) => {
+      const allMessages = useChatStore.getState().messages;
+      const history = allMessages
+        .filter((m) => m.role === 'user' || m.role === 'agent')
+        .slice(-10)
+        .map((m) => ({ role: m.role, content: m.content }));
+      wsClient.send({ type: 'chat:message', data: { content, history } });
+      setIsAgentTyping(true);
+    },
+    [setIsAgentTyping]
   );
 
   const handleSubmit = useCallback(() => {
@@ -168,35 +211,34 @@ export function CommandInput() {
       timestamp: Date.now(),
     });
 
-    if (trimmed.startsWith('/')) {
-      const { name, args } = parseCommand(trimmed);
-      const handled = handleLocalCommand(name, args);
+    if (trimmed.startsWith('!')) {
+      const handled = handleLocalCommand(trimmed);
       if (!handled) {
-        wsClient.send({ type: 'chat:message', data: { content: `${name} ${args}`.trim() } });
-        setIsAgentTyping(true);
+        addMessage({
+          id: `sys-${Date.now()}`,
+          role: 'system',
+          type: 'text',
+          content: `Unknown command: ${trimmed}. Type !/help for available commands.`,
+          timestamp: Date.now(),
+        });
       }
     } else {
-      wsClient.send({ type: 'chat:message', data: { content: trimmed } });
-      setIsAgentTyping(true);
+      sendToAgent(trimmed);
     }
 
     setInputValue('');
     setSuggestions([]);
-  }, [inputValue, addToHistory, addMessage, handleLocalCommand, setInputValue, setIsAgentTyping]);
+  }, [inputValue, addToHistory, addMessage, handleLocalCommand, sendToAgent, setInputValue]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (e.key === 'Enter') {
-        if (suggestions.length > 0) {
-          setInputValue(suggestions[selectedSuggestion] + ' ');
-          setSuggestions([]);
-        } else {
-          handleSubmit();
-        }
+        setSuggestions([]);
+        handleSubmit();
         e.preventDefault();
       } else if (e.key === 'Tab' && suggestions.length > 0) {
         e.preventDefault();
-        setInputValue(suggestions[selectedSuggestion] + ' ');
+        setInputValue(suggestions[selectedSuggestion].name + ' ');
         setSuggestions([]);
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
@@ -254,28 +296,23 @@ export function CommandInput() {
     <div className="relative shrink-0 border-t border-border bg-panel">
       {suggestions.length > 0 && (
         <div className="absolute bottom-full left-0 right-0 bg-surface border border-border border-b-0">
-          {suggestions.map((suggestion, i) => {
-            const cmd = SLASH_COMMANDS.find((c) => c.name === suggestion);
-            return (
-              <div
-                key={suggestion}
-                className={`
-                  flex items-center gap-3 px-3 py-1 cursor-pointer
-                  ${i === selectedSuggestion ? 'bg-accent/10 text-accent' : 'text-secondary hover:bg-white/5'}
-                `}
-                onClick={() => {
-                  setInputValue(suggestion + ' ');
-                  setSuggestions([]);
-                  inputRef.current?.focus();
-                }}
-              >
-                <span className="font-mono text-xs">{suggestion}</span>
-                {cmd && (
-                  <span className="text-xxs text-muted">{cmd.description}</span>
-                )}
-              </div>
-            );
-          })}
+          {suggestions.map((suggestion, i) => (
+            <div
+              key={suggestion.name}
+              className={`
+                flex items-center gap-3 px-3 py-1 cursor-pointer
+                ${i === selectedSuggestion ? 'bg-accent/10 text-accent' : 'text-secondary hover:bg-white/5'}
+              `}
+              onClick={() => {
+                setInputValue(suggestion.name + ' ');
+                setSuggestions([]);
+                inputRef.current?.focus();
+              }}
+            >
+              <span className="font-mono text-xs">{suggestion.name}</span>
+              <span className="text-xxs text-muted">{suggestion.desc}</span>
+            </div>
+          ))}
         </div>
       )}
 
@@ -287,7 +324,7 @@ export function CommandInput() {
           value={inputValue}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
-          placeholder="Type a message or /command..."
+          placeholder="Ask anything or use !/command for instant actions..."
           className="flex-1 bg-transparent text-sm text-primary placeholder:text-muted font-mono outline-none"
           spellCheck={false}
           autoComplete="off"

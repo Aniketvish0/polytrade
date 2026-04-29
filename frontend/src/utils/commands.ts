@@ -22,6 +22,11 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     usage: '/strategy [list|enable|disable] [strategy_name]',
   },
   {
+    name: '/start',
+    description: 'Start the trading agent',
+    usage: '/start',
+  },
+  {
     name: '/pause',
     description: 'Pause the trading agent',
     usage: '/pause',

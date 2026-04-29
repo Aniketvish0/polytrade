@@ -1,8 +1,8 @@
 import uuid
 from decimal import Decimal
 
-from sqlalchemy import Boolean, Numeric, String
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Boolean, Integer, Numeric, String
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin, UUIDMixin
@@ -20,6 +20,10 @@ class User(Base, UUIDMixin, TimestampMixin):
     )
     armoriq_user_id: Mapped[str | None] = mapped_column(String(255))
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    onboarding_completed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    onboarding_step: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    onboarding_data: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     portfolio: Mapped["Portfolio"] = relationship(back_populates="user", uselist=False)
     policies: Mapped[list["Policy"]] = relationship(back_populates="user")

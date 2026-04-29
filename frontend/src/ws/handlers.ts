@@ -1,5 +1,8 @@
 import type { ServerEvent, BackendEvent } from '@/types/ws';
 import type { AgentStatus } from '@/types/agent';
+import type { Trade } from '@/types/trade';
+import type { NewsItem } from '@/types/news';
+import { useAuthStore } from '@/stores/authStore';
 import { useChatStore } from '@/stores/chatStore';
 import { usePortfolioStore } from '@/stores/portfolioStore';
 import { useTradeStore } from '@/stores/tradeStore';
@@ -9,18 +12,12 @@ import { usePolicyStore } from '@/stores/policyStore';
 import { useStrategyStore } from '@/stores/strategyStore';
 import { useNotificationStore } from '@/stores/notificationStore';
 
-/**
- * Maps a backend event (domain:action format) to internal ServerEvent(s)
- * and dispatches them to the appropriate stores.
- */
 export function dispatchServerEvent(raw: ServerEvent | BackendEvent): void {
-  // If it uses the backend's "domain:action" format with `data`, normalize first
   if ('data' in raw && typeof raw.data === 'object' && raw.data !== null) {
     dispatchBackendEvent(raw as BackendEvent);
     return;
   }
 
-  // Otherwise handle the internal format (with `payload`)
   const event = raw as ServerEvent;
   handleInternalEvent(event);
 }
@@ -31,17 +28,20 @@ function dispatchBackendEvent(event: BackendEvent): void {
   switch (type) {
     case 'agent:status': {
       useAgentStore.getState().setStatus(data.status as AgentStatus);
-      useAgentStore.getState().setCurrentTask((data.currentTask as string) ?? null);
+      useAgentStore.getState().setCurrentTask((data.current_task as string) ?? (data.currentTask as string) ?? null);
       break;
     }
 
     case 'agent:message': {
+      const inner = (typeof data.message === 'object' && data.message !== null)
+        ? (data.message as Record<string, unknown>)
+        : data;
       const msg = {
-        id: (data.id as string) ?? `agent-${Date.now()}`,
+        id: `agent-${Date.now()}`,
         role: 'agent' as const,
-        type: 'text' as const,
-        content: (data.content as string) ?? (data.message as string) ?? '',
-        data: data.data as Record<string, unknown> | undefined,
+        type: ((inner.message_type as string) ?? 'text') as import('@/types/chat').MessageType,
+        content: (inner.content as string) ?? '',
+        data: (inner.data as Record<string, unknown>) ?? (inner.action as Record<string, unknown>) ?? undefined,
         timestamp: Date.now(),
       };
       useChatStore.getState().addMessage(msg);
@@ -50,95 +50,74 @@ function dispatchBackendEvent(event: BackendEvent): void {
     }
 
     case 'trade:executed': {
-      const trade = data as Record<string, unknown>;
-      const mapped = {
-        ...trade,
-        status: 'executed' as const,
-      };
-      useTradeStore.getState().addTrade(mapped as never);
+      const trade = data as unknown as Trade;
+      useTradeStore.getState().addTrade(trade);
+      usePortfolioStore.getState().fetchPortfolio();
+      usePortfolioStore.getState().fetchPositions();
       useNotificationStore.getState().addToast({
         type: 'success',
         title: 'Trade Executed',
-        message: `${(trade.side as string)?.toUpperCase() ?? ''} ${trade.shares ?? ''} ${trade.market ?? ''}`,
+        message: `${trade.action?.toUpperCase() ?? 'BUY'} ${trade.shares ?? ''} ${trade.market_question ?? ''}`,
       });
       break;
     }
 
     case 'trade:held': {
-      const trade = data as Record<string, unknown>;
-      const mapped = {
-        ...trade,
-        status: 'held' as const,
-      };
-      useTradeStore.getState().addTrade(mapped as never);
-
-      // Also create an approval request
-      if (trade.approval_id || trade.id) {
-        useTradeStore.getState().addApproval({
-          id: (trade.approval_id as string) ?? `approval-${trade.id}`,
-          tradeId: trade.id as string,
-          trade: mapped as never,
-          reason: (trade.reason as string) ?? 'Pending approval',
-          riskScore: (trade.risk_score as number) ?? 0,
-          policyViolations: (trade.policy_violations as string[]) ?? (trade.policyFlags as string[]) ?? [],
-          timestamp: Date.now(),
-        });
-      }
-
+      const d = data as Record<string, unknown>;
+      useTradeStore.getState().fetchApprovals();
       useNotificationStore.getState().addToast({
         type: 'warning',
         title: 'Trade Held',
-        message: `${trade.market ?? ''} - ${(trade.reason as string) ?? 'Pending approval'}`,
+        message: `${(d.market_question as string) ?? ''} — ${(d.reason as string) ?? 'Pending approval'}`,
         duration: 10000,
       });
       break;
     }
 
     case 'trade:denied': {
-      const trade = data as Record<string, unknown>;
-      const mapped = {
-        ...trade,
-        status: 'denied' as const,
-      };
-      useTradeStore.getState().addTrade(mapped as never);
+      const d = data as Record<string, unknown>;
       useNotificationStore.getState().addToast({
         type: 'error',
         title: 'Trade Denied',
-        message: `${trade.market ?? ''} - ${(trade.reason as string) ?? 'Policy violation'}`,
+        message: `${(d.market_question as string) ?? ''} — ${(d.reason as string) ?? 'Policy violation'}`,
       });
       break;
     }
 
     case 'portfolio:update': {
-      usePortfolioStore.getState().setSummary(data as never);
+      usePortfolioStore.getState().fetchPortfolio();
+      usePortfolioStore.getState().fetchPositions();
       break;
     }
 
     case 'news:item': {
-      useNewsStore.getState().addItem(data as never);
-      const relevance = data.relevance as number;
-      if (relevance && relevance > 0.8) {
+      const item = data as unknown as NewsItem;
+      useNewsStore.getState().addItem(item);
+      const relevance = item.relevance_score ?? 0;
+      if (relevance > 0.8) {
         useNotificationStore.getState().addToast({
           type: 'info',
           title: 'Breaking News',
-          message: data.headline as string,
+          message: item.title,
         });
       }
       break;
     }
 
     case 'policy:updated': {
-      const policies = (data.policies ?? data) as never;
-      if (Array.isArray(policies)) {
-        usePolicyStore.getState().setPolicies(policies);
-      }
+      usePolicyStore.getState().fetchPolicies();
       break;
     }
 
     case 'strategy:updated': {
-      const strategies = (data.strategies ?? data) as never;
-      if (Array.isArray(strategies)) {
-        useStrategyStore.getState().setStrategies(strategies);
+      useStrategyStore.getState().fetchStrategies();
+      break;
+    }
+
+    case 'onboarding:complete': {
+      const user = useAuthStore.getState().user;
+      if (user) {
+        useAuthStore.getState().setUser({ ...user, onboarding_completed: true });
       }
       break;
     }
@@ -148,14 +127,12 @@ function dispatchBackendEvent(event: BackendEvent): void {
       if (approvalId) {
         useTradeStore.getState().removeApproval(approvalId);
       }
-      const tradeId = data.trade_id as string;
-      if (tradeId) {
-        useTradeStore.getState().updateTrade(tradeId, { status: 'approved' });
-      }
+      useTradeStore.getState().fetchTrades();
+      usePortfolioStore.getState().fetchPortfolio();
       useNotificationStore.getState().addToast({
         type: 'success',
         title: 'Trade Approved',
-        message: (data.message as string) ?? 'Trade has been approved',
+        message: (data.message as string) ?? 'Trade has been approved and executed',
       });
       break;
     }
@@ -164,10 +141,6 @@ function dispatchBackendEvent(event: BackendEvent): void {
       const approvalId = (data.approval_id ?? data.id) as string;
       if (approvalId) {
         useTradeStore.getState().removeApproval(approvalId);
-      }
-      const tradeId = data.trade_id as string;
-      if (tradeId) {
-        useTradeStore.getState().updateTrade(tradeId, { status: 'denied' });
       }
       useNotificationStore.getState().addToast({
         type: 'error',
@@ -178,7 +151,6 @@ function dispatchBackendEvent(event: BackendEvent): void {
     }
 
     case 'pong': {
-      // Heartbeat response — ignore
       break;
     }
 
@@ -205,7 +177,6 @@ function dispatchBackendEvent(event: BackendEvent): void {
   }
 }
 
-/** Handle legacy internal format events (with payload field) */
 function handleInternalEvent(event: ServerEvent): void {
   switch (event.type) {
     case 'chat_message': {
@@ -215,28 +186,7 @@ function handleInternalEvent(event: ServerEvent): void {
     }
 
     case 'trade_update': {
-      const trade = event.payload;
-      useTradeStore.getState().addTrade(trade);
-
-      if (trade.status === 'held') {
-        useNotificationStore.getState().addToast({
-          type: 'warning',
-          title: 'Trade Held',
-          message: `${trade.market} - ${trade.reason ?? 'Pending approval'}`,
-        });
-      } else if (trade.status === 'executed') {
-        useNotificationStore.getState().addToast({
-          type: 'success',
-          title: 'Trade Executed',
-          message: `${trade.side.toUpperCase()} ${trade.shares} ${trade.market}`,
-        });
-      } else if (trade.status === 'denied') {
-        useNotificationStore.getState().addToast({
-          type: 'error',
-          title: 'Trade Denied',
-          message: `${trade.market} - ${trade.reason ?? 'Policy violation'}`,
-        });
-      }
+      useTradeStore.getState().addTrade(event.payload);
       break;
     }
 
@@ -245,7 +195,7 @@ function handleInternalEvent(event: ServerEvent): void {
       useNotificationStore.getState().addToast({
         type: 'warning',
         title: 'Approval Required',
-        message: event.payload.reason,
+        message: event.payload.reasoning ?? 'Trade requires approval',
         duration: 10000,
       });
       break;
@@ -263,11 +213,11 @@ function handleInternalEvent(event: ServerEvent): void {
 
     case 'news_item': {
       useNewsStore.getState().addItem(event.payload);
-      if (event.payload.relevance > 0.8) {
+      if ((event.payload.relevance_score ?? 0) > 0.8) {
         useNotificationStore.getState().addToast({
           type: 'info',
           title: 'Breaking News',
-          message: event.payload.headline,
+          message: event.payload.title,
         });
       }
       break;

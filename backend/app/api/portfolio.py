@@ -45,8 +45,9 @@ async def get_portfolio(
 
     policy_result = await db.execute(
         select(Policy).where(Policy.user_id == user.id, Policy.is_active == True)
+        .order_by(Policy.created_at.desc())
     )
-    active_policy = policy_result.scalar_one_or_none()
+    active_policy = policy_result.scalars().first()
     daily_limit = Decimal("200")
     if active_policy and active_policy.global_rules:
         daily_limit = Decimal(str(active_policy.global_rules.get("max_daily_spend", 200)))

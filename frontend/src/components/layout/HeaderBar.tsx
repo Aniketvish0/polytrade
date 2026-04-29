@@ -4,18 +4,26 @@ import { useAuthStore } from '@/stores/authStore';
 
 const statusLabels: Record<string, string> = {
   idle: 'IDLE',
+  scanning: 'SCANNING',
+  researching: 'RESEARCHING',
   analyzing: 'ANALYZING',
   trading: 'TRADING',
+  running: 'RUNNING',
   paused: 'PAUSED',
+  offline: 'OFFLINE',
   error: 'ERROR',
   disconnected: 'OFFLINE',
 };
 
 const statusDotColors: Record<string, string> = {
   idle: 'bg-approved',
+  scanning: 'bg-accent',
+  researching: 'bg-accent',
   analyzing: 'bg-accent',
   trading: 'bg-held',
+  running: 'bg-accent',
   paused: 'bg-muted',
+  offline: 'bg-muted',
   error: 'bg-denied',
   disconnected: 'bg-muted',
 };
@@ -47,8 +55,8 @@ export function HeaderBar() {
         <div className="flex items-center gap-1.5">
           <Activity size={11} className="text-muted" />
           <div
-            className={`w-1.5 h-1.5 ${statusDotColors[status]} ${
-              status === 'analyzing' || status === 'trading'
+            className={`w-1.5 h-1.5 ${statusDotColors[status] ?? 'bg-muted'} ${
+              status === 'scanning' || status === 'researching' || status === 'analyzing' || status === 'trading' || status === 'running'
                 ? 'pulse-dot'
                 : ''
             }`}

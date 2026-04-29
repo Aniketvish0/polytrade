@@ -1,13 +1,13 @@
-import type { TradeStatus } from '@/types/trade';
-
 interface BadgeProps {
-  status: TradeStatus;
+  status: string;
   className?: string;
 }
 
-const statusConfig: Record<TradeStatus, { bg: string; text: string; label: string }> = {
+const statusConfig: Record<string, { bg: string; text: string; label: string }> = {
   approved: { bg: 'bg-approved/15', text: 'text-approved', label: 'APPROVED' },
+  auto_approved: { bg: 'bg-approved/15', text: 'text-approved', label: 'AUTO' },
   held: { bg: 'bg-held/15', text: 'text-held', label: 'HELD' },
+  deny: { bg: 'bg-denied/15', text: 'text-denied', label: 'DENIED' },
   denied: { bg: 'bg-denied/15', text: 'text-denied', label: 'DENIED' },
   pending: { bg: 'bg-pending/15', text: 'text-pending', label: 'PENDING' },
   executed: { bg: 'bg-approved/15', text: 'text-approved', label: 'EXECUTED' },
@@ -15,8 +15,10 @@ const statusConfig: Record<TradeStatus, { bg: string; text: string; label: strin
   cancelled: { bg: 'bg-muted/15', text: 'text-muted', label: 'CANCELLED' },
 };
 
+const fallback = { bg: 'bg-muted/15', text: 'text-muted', label: 'UNKNOWN' };
+
 export function Badge({ status, className = '' }: BadgeProps) {
-  const config = statusConfig[status];
+  const config = statusConfig[status] ?? fallback;
   return (
     <span
       className={`

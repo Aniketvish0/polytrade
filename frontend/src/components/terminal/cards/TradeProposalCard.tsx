@@ -1,11 +1,10 @@
 import type { ChatMessage } from '@/types/chat';
-import type { Trade } from '@/types/trade';
+import type { ApprovalRequest } from '@/types/trade';
 import { Badge } from '@/components/shared/Badge';
 import { Button } from '@/components/shared/Button';
 import { MonoValue } from '@/components/shared/MonoValue';
 import { formatUSD, formatOdds } from '@/utils/format';
 import { useTradeStore } from '@/stores/tradeStore';
-import { wsClient } from '@/ws/client';
 import { ArrowUpRight, ArrowDownRight, Shield } from 'lucide-react';
 
 interface TradeProposalCardProps {
@@ -13,11 +12,12 @@ interface TradeProposalCardProps {
 }
 
 export function TradeProposalCard({ message }: TradeProposalCardProps) {
-  const trade = (message.data as { trade?: Trade })?.trade;
-  const updateTrade = useTradeStore((s) => s.updateTrade);
-  const removeApproval = useTradeStore((s) => s.removeApproval);
+  const approval = (message.data as { approval?: ApprovalRequest })?.approval;
+  const trade = (message.data as { trade?: Record<string, unknown> })?.trade;
+  const approveTradeAction = useTradeStore((s) => s.approveTradeAction);
+  const rejectTradeAction = useTradeStore((s) => s.rejectTradeAction);
 
-  if (!trade) {
+  if (!approval && !trade) {
     return (
       <div className="px-2 py-1 bg-surface border border-border">
         <span className="text-xs text-secondary">{message.content}</span>
@@ -25,19 +25,30 @@ export function TradeProposalCard({ message }: TradeProposalCardProps) {
     );
   }
 
-  const isBuy = trade.side === 'buy';
-  const isHeld = trade.status === 'held';
+  const marketQuestion = approval?.market_question ?? (trade?.market_question as string) ?? '';
+  const side = approval?.side ?? (trade?.side as string) ?? '';
+  const action = approval?.action ?? (trade?.action as string) ?? 'buy';
+  const shares = approval?.shares ?? (trade?.shares as number) ?? 0;
+  const price = approval?.price ?? (trade?.price as number) ?? 0;
+  const totalAmount = approval?.total_amount ?? (trade?.total_amount as number) ?? 0;
+  const reasoning = approval?.reasoning ?? (trade?.reasoning as string) ?? '';
+  const thresholdBreached = approval?.threshold_breached;
+  const status = approval?.status ?? 'pending';
+  const approvalId = approval?.id;
+
+  const isBuy = action === 'buy';
+  const isPending = status === 'pending';
 
   const handleApprove = () => {
-    wsClient.send({ type: 'trade:approve', data: { approval_id: trade.id } });
-    updateTrade(trade.id, { status: 'approved' });
-    removeApproval(trade.id);
+    if (approvalId) {
+      approveTradeAction(approvalId);
+    }
   };
 
   const handleReject = () => {
-    wsClient.send({ type: 'trade:reject', data: { approval_id: trade.id } });
-    updateTrade(trade.id, { status: 'denied' });
-    removeApproval(trade.id);
+    if (approvalId) {
+      rejectTradeAction(approvalId);
+    }
   };
 
   return (
@@ -50,51 +61,46 @@ export function TradeProposalCard({ message }: TradeProposalCardProps) {
             <ArrowDownRight size={12} className="text-denied" />
           )}
           <span className={`font-mono text-xs font-semibold ${isBuy ? 'text-approved' : 'text-denied'}`}>
-            {trade.side.toUpperCase()}
+            {action.toUpperCase()}
           </span>
-          <Badge status={trade.status} />
+          <Badge status={status === 'pending' ? 'held' : status} />
         </div>
       </div>
 
-      <div className="text-xs text-primary font-medium">{trade.market}</div>
-      <div className="text-xxs text-secondary">Outcome: {trade.outcome}</div>
+      <div className="text-xs text-primary font-medium">{marketQuestion}</div>
+      <div className="text-xxs text-secondary">Side: {side}</div>
 
       <div className="grid grid-cols-3 gap-2 py-1">
         <div>
           <div className="text-xxs text-muted">Shares</div>
-          <MonoValue value={trade.shares} />
+          <MonoValue value={shares} />
         </div>
         <div>
           <div className="text-xxs text-muted">Price</div>
-          <MonoValue value={formatOdds(trade.price)} />
+          <MonoValue value={formatOdds(price)} />
         </div>
         <div>
           <div className="text-xxs text-muted">Total</div>
-          <MonoValue value={formatUSD(trade.total)} />
+          <MonoValue value={formatUSD(totalAmount)} />
         </div>
       </div>
 
-      {trade.reason && (
+      {reasoning && (
         <div className="flex items-start gap-1 py-1 text-xxs text-held">
           <Shield size={10} className="shrink-0 mt-0.5" />
-          <span>{trade.reason}</span>
+          <span>{reasoning}</span>
         </div>
       )}
 
-      {trade.policyFlags && trade.policyFlags.length > 0 && (
+      {thresholdBreached && (
         <div className="flex flex-wrap gap-1">
-          {trade.policyFlags.map((flag) => (
-            <span
-              key={flag}
-              className="font-mono text-xxs text-held bg-held/10 px-1 py-px"
-            >
-              {flag}
-            </span>
-          ))}
+          <span className="font-mono text-xxs text-held bg-held/10 px-1 py-px">
+            {thresholdBreached}
+          </span>
         </div>
       )}
 
-      {isHeld && (
+      {isPending && (
         <div className="flex items-center gap-2 pt-1 border-t border-border">
           <Button variant="success" size="sm" onClick={handleApprove}>
             APPROVE
