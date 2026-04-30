@@ -1,4 +1,5 @@
 import type { ChatMessage } from '@/types/chat';
+import ReactMarkdown from 'react-markdown';
 import { TradeProposalCard } from './cards/TradeProposalCard';
 import { NewsCard } from './cards/NewsCard';
 import { ErrorCard } from './cards/ErrorCard';
@@ -85,6 +86,13 @@ export function MessageBubble({ message }: MessageBubbleProps) {
       }
       case 'text':
       default:
+        if (message.role === 'agent' && /[*_`#\[]/.test(message.content)) {
+          return (
+            <div className="text-xs text-primary prose prose-invert prose-xs max-w-none [&_p]:my-0.5 [&_ul]:my-0.5 [&_ol]:my-0.5 [&_li]:my-0 [&_strong]:text-accent [&_code]:text-accent [&_code]:bg-surface [&_code]:px-1 [&_code]:py-px [&_code]:text-xxs [&_h1]:text-sm [&_h2]:text-xs [&_h3]:text-xs [&_a]:text-accent">
+              <ReactMarkdown>{message.content}</ReactMarkdown>
+            </div>
+          );
+        }
         return (
           <span className="text-xs text-primary whitespace-pre-wrap">
             {message.content}

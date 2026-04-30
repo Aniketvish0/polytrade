@@ -50,7 +50,8 @@ async def get_portfolio(
     active_policy = policy_result.scalars().first()
     daily_limit = Decimal("200")
     if active_policy and active_policy.global_rules:
-        daily_limit = Decimal(str(active_policy.global_rules.get("max_daily_spend", 200)))
+        gr = active_policy.global_rules
+        daily_limit = Decimal(str(gr.get("daily_spend_limit", gr.get("max_daily_spend", gr.get("daily_limit", 200)))))
 
     win_rate = 0.0
     if portfolio.total_trades > 0:

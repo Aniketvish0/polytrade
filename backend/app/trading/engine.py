@@ -27,6 +27,8 @@ class SimulatedTradingEngine:
         decision: dict,
         enforcement_result: str,
         policy_id: uuid.UUID | None = None,
+        armoriq_plan_hash: str | None = None,
+        armoriq_intent_token_id: str | None = None,
     ) -> Trade:
         execution_price = price * (1 + Decimal(self.SLIPPAGE_BPS) / 10000)
         total_cost = (shares * execution_price).quantize(Decimal("0.01"))
@@ -97,6 +99,8 @@ class SimulatedTradingEngine:
             reasoning=decision.get("reasoning"),
             enforcement_result=enforcement_result,
             policy_id=policy_id,
+            armoriq_plan_hash=armoriq_plan_hash,
+            armoriq_intent_token_id=armoriq_intent_token_id,
         )
         self.db.add(trade)
         await self.db.flush()

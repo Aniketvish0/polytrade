@@ -11,6 +11,7 @@ import { useAgentStore } from '@/stores/agentStore';
 import { usePolicyStore } from '@/stores/policyStore';
 import { useStrategyStore } from '@/stores/strategyStore';
 import { useNotificationStore } from '@/stores/notificationStore';
+import { useActivityStore } from '@/stores/activityStore';
 
 export function dispatchServerEvent(raw: ServerEvent | BackendEvent): void {
   if ('data' in raw && typeof raw.data === 'object' && raw.data !== null) {
@@ -32,6 +33,12 @@ function dispatchBackendEvent(event: BackendEvent): void {
       break;
     }
 
+    case 'agent:activity': {
+      const { phase, message, ...rest } = data as { phase: string; message: string; [k: string]: unknown };
+      useActivityStore.getState().addEntry(phase, message, rest);
+      break;
+    }
+
     case 'agent:message': {
       const inner = (typeof data.message === 'object' && data.message !== null)
         ? (data.message as Record<string, unknown>)
@@ -50,7 +57,8 @@ function dispatchBackendEvent(event: BackendEvent): void {
     }
 
     case 'trade:executed': {
-      const trade = data as unknown as Trade;
+      const inner = (data.trade ?? data) as Record<string, unknown>;
+      const trade = inner as unknown as Trade;
       useTradeStore.getState().addTrade(trade);
       usePortfolioStore.getState().fetchPortfolio();
       usePortfolioStore.getState().fetchPositions();
@@ -63,23 +71,23 @@ function dispatchBackendEvent(event: BackendEvent): void {
     }
 
     case 'trade:held': {
-      const d = data as Record<string, unknown>;
+      const inner = (data.trade ?? data) as Record<string, unknown>;
       useTradeStore.getState().fetchApprovals();
       useNotificationStore.getState().addToast({
         type: 'warning',
         title: 'Trade Held',
-        message: `${(d.market_question as string) ?? ''} — ${(d.reason as string) ?? 'Pending approval'}`,
+        message: `${(inner.market_question as string) ?? ''} — ${(data.reason as string) ?? 'Pending approval'}`,
         duration: 10000,
       });
       break;
     }
 
     case 'trade:denied': {
-      const d = data as Record<string, unknown>;
+      const inner = (data.trade ?? data) as Record<string, unknown>;
       useNotificationStore.getState().addToast({
         type: 'error',
         title: 'Trade Denied',
-        message: `${(d.market_question as string) ?? ''} — ${(d.reason as string) ?? 'Policy violation'}`,
+        message: `${(inner.market_question as string) ?? ''} — ${(data.reason as string) ?? 'Policy violation'}`,
       });
       break;
     }

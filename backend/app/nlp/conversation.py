@@ -146,7 +146,7 @@ class ConversationEngine:
                 status = "ACTIVE" if p.is_active else "inactive"
                 global_r = p.global_rules or {}
                 pol_lines.append(
-                    f"- {p.name} [{status}] daily_limit=${global_r.get('daily_limit', '?')} max_trade=${global_r.get('max_per_trade', '?')}"
+                    f"- {p.name} [{status}] daily_limit=${global_r.get('daily_spend_limit', global_r.get('daily_limit', '?'))} max_trade=${global_r.get('max_single_trade', global_r.get('max_per_trade', '?'))}"
                 )
                 for cat, rules in (p.category_rules or {}).items():
                     if cat == "_default":

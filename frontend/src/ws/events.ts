@@ -19,6 +19,7 @@ export type WSEventType = (typeof WS_EVENTS)[keyof typeof WS_EVENTS];
 export const BACKEND_EVENTS = {
   AGENT_STATUS: 'agent:status',
   AGENT_MESSAGE: 'agent:message',
+  AGENT_ACTIVITY: 'agent:activity',
   TRADE_EXECUTED: 'trade:executed',
   TRADE_HELD: 'trade:held',
   TRADE_DENIED: 'trade:denied',

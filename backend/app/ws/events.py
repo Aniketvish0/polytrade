@@ -61,3 +61,10 @@ def policy_updated_event(policy: Any) -> WSEvent:
 
 def strategy_updated_event(strategy: Any) -> WSEvent:
     return WSEvent(type="strategy:updated", data={"strategy": _to_dict(strategy)})
+
+
+def agent_activity_event(phase: str, message: str, detail: dict[str, Any] | None = None) -> WSEvent:
+    return WSEvent(
+        type="agent:activity",
+        data={"phase": phase, "message": message, **(detail or {})},
+    )

@@ -22,3 +22,15 @@ class MarketResponse(BaseModel):
     last_fetched_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class EnhancedMarketResponse(MarketResponse):
+    edge_potential: float | None = None
+    liquidity_score: float | None = None
+    composite_score: float | None = None
+    research_status: str | None = None
+    last_researched_at: datetime | None = None
+    user_has_position: bool = False
+    position_side: str | None = None
+    spread: float | None = None
+    hours_to_resolution: float | None = None

@@ -203,6 +203,11 @@ export function CommandInput() {
 
     addToHistory(trimmed);
 
+    const shouldSend = !trimmed.startsWith('!');
+    if (shouldSend) {
+      sendToAgent(trimmed);
+    }
+
     addMessage({
       id: `user-${Date.now()}`,
       role: 'user',
@@ -211,7 +216,7 @@ export function CommandInput() {
       timestamp: Date.now(),
     });
 
-    if (trimmed.startsWith('!')) {
+    if (!shouldSend) {
       const handled = handleLocalCommand(trimmed);
       if (!handled) {
         addMessage({
@@ -222,8 +227,6 @@ export function CommandInput() {
           timestamp: Date.now(),
         });
       }
-    } else {
-      sendToAgent(trimmed);
     }
 
     setInputValue('');

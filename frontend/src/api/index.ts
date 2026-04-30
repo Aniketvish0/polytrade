@@ -4,6 +4,7 @@ import type { PortfolioSummary, Position } from '@/types/portfolio';
 import type { Trade, ApprovalRequest } from '@/types/trade';
 import type { NewsItem } from '@/types/news';
 import type { Policy, Strategy } from '@/types/ws';
+import type { EnhancedMarket } from '@/types/market';
 
 // Auth
 export const authApi = {
@@ -57,6 +58,17 @@ export const agentApi = {
     ),
   pause: () => apiClient.post('/api/agent/pause'),
   resume: () => apiClient.post('/api/agent/resume'),
+};
+
+// Markets
+export const marketsApi = {
+  listEnhanced: (params?: { category?: string; sort_by?: string; limit?: number }) => {
+    const query: Record<string, string> = {};
+    if (params?.category) query.category = params.category;
+    if (params?.sort_by) query.sort_by = params.sort_by;
+    if (params?.limit) query.limit = String(params.limit);
+    return apiClient.get<EnhancedMarket[]>('/api/markets/enhanced', query);
+  },
 };
 
 // Chat

@@ -1,9 +1,16 @@
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
+
+_fh = logging.FileHandler("/tmp/polytrade-debug.log", mode="a")
+_fh.setLevel(logging.DEBUG)
+_fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)-8s %(name)s — %(message)s"))
+logging.getLogger("app").addHandler(_fh)
+logging.getLogger("app").setLevel(logging.DEBUG)
 
 
 @asynccontextmanager

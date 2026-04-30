@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api import agent, approvals, auth, chat, markets, news, policies, portfolio, strategies, trades
+from app.api import agent, approvals, audit, auth, chat, markets, news, policies, portfolio, strategies, trades
 
 api_router = APIRouter()
 
@@ -20,3 +20,4 @@ api_router.include_router(news.router, prefix="/news", tags=["news"])
 api_router.include_router(approvals.router, prefix="/approvals", tags=["approvals"])
 api_router.include_router(agent.router, prefix="/agent", tags=["agent"])
 api_router.include_router(chat.router, prefix="/chat", tags=["chat"])
+api_router.include_router(audit.router, prefix="/audit", tags=["audit"])

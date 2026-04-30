@@ -105,7 +105,7 @@ CHAT_RESPONSE_TOOL = ToolDefinition(
             },
             "action": {
                 "type": "object",
-                "description": "Optional action to execute",
+                "description": "Optional action to execute. For create_strategy: data must include name, rules (with categories, min_confidence, min_edge, entry_criteria, position_sizing), and context. For create_policy: data must include name, global_rules (daily_spend_limit, max_single_trade, max_open_positions), category_rules, confidence_rules.",
                 "properties": {
                     "type": {
                         "type": "string",
@@ -121,7 +121,7 @@ CHAT_RESPONSE_TOOL = ToolDefinition(
                     },
                     "data": {
                         "type": "object",
-                        "description": "Action-specific data",
+                        "description": "For create_strategy: {name: str, rules: {categories: str[], min_confidence: float, min_edge: float, entry_criteria: {}, position_sizing: {max_trade_amount: float}}, context: str}. For create_policy: {name: str, global_rules: {daily_spend_limit: float, max_single_trade: float, max_open_positions: int}, category_rules: {category: {enabled: bool, auto_approve_below: float, hold_above: float, deny_above: float}}, confidence_rules: {min_confidence: float, min_sources: int}}",
                     },
                 },
                 "required": ["type"],

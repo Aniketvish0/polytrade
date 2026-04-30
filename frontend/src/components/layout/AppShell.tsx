@@ -1,30 +1,33 @@
+import { Sidebar } from './Sidebar';
 import { HeaderBar } from './HeaderBar';
-import { SplitLayout } from './SplitLayout';
 import { Terminal } from '@/components/terminal/Terminal';
-import { PortfolioPanel } from '@/components/dashboard/PortfolioPanel';
-import { TradeFeed } from '@/components/dashboard/TradeFeed';
-import { NewsFeed } from '@/components/dashboard/NewsFeed';
+import { DashboardPage } from '@/components/pages/DashboardPage';
+import { PipelinePage } from '@/components/pages/PipelinePage';
+import { StrategiesPage } from '@/components/pages/StrategiesPage';
+import { AuditPage } from '@/components/pages/AuditPage';
+import { useUIStore } from '@/stores/uiStore';
+
+const PAGE_COMPONENTS: Record<string, React.ComponentType> = {
+  chat: Terminal,
+  dashboard: DashboardPage,
+  pipeline: PipelinePage,
+  strategies: StrategiesPage,
+  audit: AuditPage,
+};
 
 export function AppShell() {
+  const activePage = useUIStore((s) => s.activePage);
+  const PageComponent = PAGE_COMPONENTS[activePage] || Terminal;
+
   return (
-    <div className="flex flex-col h-screen w-screen bg-base overflow-hidden">
-      <HeaderBar />
-      <SplitLayout
-        left={<Terminal />}
-        right={
-          <div className="flex flex-col h-full overflow-hidden">
-            <div className="flex-[2] min-h-0 overflow-hidden">
-              <PortfolioPanel />
-            </div>
-            <div className="flex-[2] min-h-0 overflow-hidden border-t border-border">
-              <TradeFeed />
-            </div>
-            <div className="flex-[1] min-h-0 overflow-hidden border-t border-border">
-              <NewsFeed />
-            </div>
-          </div>
-        }
-      />
+    <div className="flex h-screen w-screen bg-base overflow-hidden">
+      <Sidebar />
+      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+        <HeaderBar />
+        <div className="flex-1 min-h-0 overflow-hidden">
+          <PageComponent />
+        </div>
+      </div>
     </div>
   );
 }

@@ -1,6 +1,14 @@
-import { Activity, Wifi, WifiOff, LogOut } from 'lucide-react';
+import { Activity, Wifi, WifiOff } from 'lucide-react';
 import { useAgentStore } from '@/stores/agentStore';
-import { useAuthStore } from '@/stores/authStore';
+import { useUIStore } from '@/stores/uiStore';
+
+const PAGE_TITLES: Record<string, string> = {
+  chat: 'TERMINAL',
+  dashboard: 'DASHBOARD',
+  pipeline: 'TRADE PIPELINE',
+  strategies: 'STRATEGIES & POLICIES',
+  audit: 'ARMORIQ AUDIT',
+};
 
 const statusLabels: Record<string, string> = {
   idle: 'IDLE',
@@ -32,9 +40,8 @@ export function HeaderBar() {
   const status = useAgentStore((s) => s.status);
   const connectionState = useAgentStore((s) => s.connectionState);
   const currentTask = useAgentStore((s) => s.currentTask);
+  const activePage = useUIStore((s) => s.activePage);
   const isConnected = connectionState === 'connected';
-  const user = useAuthStore((s) => s.user);
-  const logout = useAuthStore((s) => s.logout);
 
   return (
     <header className="flex items-center justify-between h-8 px-3 bg-panel border-b border-border shrink-0 select-none">
@@ -43,6 +50,10 @@ export function HeaderBar() {
           POLYTRADE
         </span>
         <span className="text-xxs text-muted font-mono">v0.1.0</span>
+        <span className="text-xxs text-muted">/</span>
+        <span className="font-mono text-xxs tracking-wider text-secondary">
+          {PAGE_TITLES[activePage] ?? 'TERMINAL'}
+        </span>
       </div>
 
       <div className="flex items-center gap-4">
@@ -76,21 +87,6 @@ export function HeaderBar() {
             {isConnected ? 'LIVE' : 'OFF'}
           </span>
         </div>
-
-        {user && (
-          <div className="flex items-center gap-2 pl-2 border-l border-border">
-            <span className="font-mono text-xxs text-secondary truncate max-w-[120px]">
-              {user.display_name ?? user.email}
-            </span>
-            <button
-              onClick={logout}
-              className="text-muted hover:text-denied transition-colors"
-              title="Logout"
-            >
-              <LogOut size={11} />
-            </button>
-          </div>
-        )}
       </div>
     </header>
   );

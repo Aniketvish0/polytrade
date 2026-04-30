@@ -66,6 +66,8 @@ async def _handle_chat_message(msg: dict, user_id: str, websocket: WebSocket):
             history = msg.get("data", {}).get("history", [])
             content = msg.get("data", {}).get("content", "")
 
+            logger.info(f"[CHAT] user={user.email} onboarded={user.onboarding_completed} content={content[:100]!r} history_len={len(history)}")
+
             if not user.onboarding_completed:
                 from app.nlp.onboarding import OnboardingEngine
                 engine = OnboardingEngine(db=db, user=user)
@@ -75,13 +77,16 @@ async def _handle_chat_message(msg: dict, user_id: str, websocket: WebSocket):
                 parser = CommandParser(db=db, user=user)
                 chat_result = await parser.process(content, conversation_history=history)
 
+            logger.info(f"[CHAT] result type={chat_result.get('type')} msg_type={chat_result.get('message_type')} action={chat_result.get('action', {}).get('type') if isinstance(chat_result.get('action'), dict) else 'none'}")
+
             await ws_manager.send_to_user(
                 user_id,
                 agent_message_event(chat_result),
             )
 
             action = chat_result.get("action", {})
-            if isinstance(action, dict):
+            if isinstance(action, dict) and action.get("type"):
+                logger.info(f"[ACTION] Executing action type={action['type']} data_keys={list(action.get('data', {}).keys())}")
                 await _execute_action(action, user, db, websocket)
 
             await db.commit()
@@ -244,9 +249,28 @@ async def _handle_trade_action(msg: dict, event_type: str, user_id: str):
             approval.resolution_note = msg["data"].get("note")
 
             if new_status == "approved":
+                from app.db.models.audit_log import AuditLog
                 from app.db.models.market_cache import MarketCache
+                from app.db.models.user import User as _User
                 from app.trading.engine import SimulatedTradingEngine
                 from app.ws.events import trade_executed_event, portfolio_update_event
+
+                user_result = await approval_db.execute(
+                    select(_User).where(_User.id == _uuid.UUID(user_id))
+                )
+                _user = user_result.scalar_one_or_none()
+
+                armoriq_result = {}
+                if _user:
+                    try:
+                        from app.api.approvals import _run_armoriq_approval_lifecycle
+                        armoriq_result = _run_armoriq_approval_lifecycle(
+                            user_email=_user.email,
+                            approval=approval,
+                            delegation_id=approval.armoriq_delegation_id,
+                        )
+                    except Exception as armoriq_err:
+                        logger.warning(f"ArmorIQ approval lifecycle failed: {armoriq_err}")
 
                 mkt = await approval_db.execute(
                     select(MarketCache).where(
@@ -269,8 +293,35 @@ async def _handle_trade_action(msg: dict, event_type: str, user_id: str):
                         },
                         enforcement_result="approved",
                         policy_id=approval.policy_id,
+                        armoriq_plan_hash=armoriq_result.get("plan_hash"),
+                        armoriq_intent_token_id=armoriq_result.get("intent_token_id"),
                     )
                     await approval_db.flush()
+
+                    audit = AuditLog(
+                        user_id=_uuid.UUID(user_id),
+                        action="trade_approved",
+                        entity_type="trade",
+                        entity_id=trade.id,
+                        details={
+                            "market_id": approval.market_id,
+                            "market_question": approval.market_question,
+                            "side": approval.side,
+                            "shares": int(approval.shares),
+                            "price": float(approval.price),
+                            "total_amount": float(approval.total_amount),
+                            "category": approval.category,
+                            "confidence": float(approval.confidence_score or 0),
+                            "reasoning": (approval.reasoning or "")[:200],
+                            "enforcement_reason": "Human approved via WS",
+                            "approval_id": str(approval.id),
+                            "armoriq_decision": "human_approved",
+                        },
+                        armoriq_plan_hash=armoriq_result.get("plan_hash"),
+                        armoriq_intent_token=armoriq_result.get("intent_token_id"),
+                    )
+                    approval_db.add(audit)
+
                     await ws_manager.send_to_user(user_id, trade_executed_event(trade))
                     portfolio = await engine._get_portfolio(_uuid.UUID(user_id))
                     await ws_manager.send_to_user(user_id, portfolio_update_event(portfolio))

@@ -1,7 +1,9 @@
 import logging
+from datetime import datetime, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent.research_cache import ResearchCache
 from app.db.models.market_cache import MarketCache
 from app.services.news_service import NewsService
 
@@ -9,9 +11,25 @@ logger = logging.getLogger(__name__)
 
 
 class MarketResearcher:
-    def __init__(self, db: AsyncSession):
+    def __init__(self, db: AsyncSession, research_cache: ResearchCache):
         self.db = db
         self.news_service = NewsService(db=db)
+        self.research_cache = research_cache
+
+    async def research_with_cache(self, market: MarketCache) -> dict:
+        current_price = float(market.yes_price) if market.yes_price else 0.5
+        mid = market.condition_id
+        now = datetime.now(timezone.utc)
+
+        if not self.research_cache.should_research(mid, current_price, now):
+            entry = self.research_cache.get(mid)
+            if entry and entry.research_result:
+                logger.debug(f"Research cache hit for {mid}")
+                return entry.research_result
+
+        result = await self.research(market)
+        self.research_cache.record_research(mid, result, current_price)
+        return result
 
     async def research(self, market: MarketCache) -> dict:
         try:
